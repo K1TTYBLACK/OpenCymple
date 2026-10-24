@@ -1,0 +1,16 @@
+# Local virtualenv and build/cache output
+.venv/
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Raw headset/camera captures and oracle outputs: large, contain the user's
+# camera data, and derive from Cymple's models. Keep them out of the repo.
+captures/
+
+# Local settings and secrets
+.env
+*.ini
