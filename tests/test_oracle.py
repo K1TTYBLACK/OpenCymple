@@ -1,5 +1,5 @@
-from cymple_linux import calibration as C
-from cymple_linux.oracle import MODES, CympleBottle
+from opencymple_linux import calibration as C
+from opencymple_linux.oracle import MODES, CympleBottle
 
 INI = "[VRCDIRECT]\nEnabled = true\n\n[Face Inference Device]\nDeviceId = 1\n"
 

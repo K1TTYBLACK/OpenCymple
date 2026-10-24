@@ -4,12 +4,12 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from cymple_linux.outputs import vrcft_params as V
-from cymple_linux.outputs.avatar import (FixedAvatar, OscQueryClient, find_avatar_config, params_from_oscquery,
+from opencymple_linux.outputs import vrcft_params as V
+from opencymple_linux.outputs.avatar import (FixedAvatar, OscQueryClient, find_avatar_config, params_from_oscquery,
                                          read_avatar_config)
-from cymple_linux.outputs.osc import message, parse
-from cymple_linux.outputs.vrchat import VRChatOutput
-from cymple_linux.params import FIELDS
+from opencymple_linux.outputs.osc import message, parse
+from opencymple_linux.outputs.vrchat import VRChatOutput
+from opencymple_linux.params import FIELDS
 
 P = V.PREFIX
 

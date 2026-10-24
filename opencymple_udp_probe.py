@@ -452,7 +452,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--bind", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=23303)
-    ap.add_argument("--out", default=time.strftime("cymple-capture-%Y%m%d-%H%M%S"))
+    ap.add_argument("--out", default=time.strftime("opencymple-capture-%Y%m%d-%H%M%S"))
     ap.add_argument("--duration", type=float, default=0, help="seconds to run (0 = until Ctrl+C)")
     ap.add_argument("--no-beacon", action="store_true", help="do not announce this PC on UDP 23302")
     ap.add_argument("--beacon-to", action="append", default=[], metavar="IP",

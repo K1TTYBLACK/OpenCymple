@@ -2,8 +2,8 @@ import math
 
 import pytest
 
-from cymple_linux import face as F
-from cymple_linux.calibration import Calibration
+from opencymple_linux import face as F
+from opencymple_linux.calibration import Calibration
 
 
 def test_lid_map_endpoints():
@@ -91,7 +91,7 @@ def test_mouth_mapping_table():
 
 
 def test_mouth_amplitude_slots_follow_cymple():
-    from cymple_linux.calibration import amp_slots
+    from opencymple_linux.calibration import amp_slots
     amps = {"Amp_ShrugLowerAmp": 0.5, "Amp_MouthSmileAmp": 0.6, "Amp_MouthDimpleAmp": 1.6,
             "Amp_MouthFrownAmp": 2.25, "Amp_MouthStretchAmp": 0.7, "Amp_JawShiftAmp": 1.0,
             "Amp_TongueOutAmp": 9.0, "Amp_EyeWide": 0.3}
@@ -122,7 +122,7 @@ def test_mouth_filter_params_and_core():
 
 
 def test_live_reconfigure_keeps_filter_state():
-    from cymple_linux.gaze import OneEuro, gaze_filter_params
+    from opencymple_linux.gaze import OneEuro, gaze_filter_params
     f = OneEuro(4.0, 0.06)
     f(0.0, 0.0)
     f(1.0, 0.02)
@@ -148,8 +148,8 @@ def test_live_reconfigure_keeps_filter_state():
 
 def test_mouth_roi_resets_when_ui_changes_it():
     import numpy as np
-    from cymple_linux.calibration import MouthCalibration
-    from cymple_linux.mouth import MouthV1Tracker
+    from opencymple_linux.calibration import MouthCalibration
+    from opencymple_linux.mouth import MouthV1Tracker
 
     class Model:
         def __init__(self, out):

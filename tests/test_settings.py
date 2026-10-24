@@ -4,8 +4,8 @@ import os
 
 import pytest
 
-from cymple_linux import calibration as C
-from cymple_linux import settings as S
+from opencymple_linux import calibration as C
+from opencymple_linux import settings as S
 
 INI = """[ui]
 themeMode = dark
@@ -27,7 +27,7 @@ def cymple(tmp_path, monkeypatch):
     (d / "iniFile.ini").write_text(INI)
     (d / "avatarParaments" / "default.json").write_text(json.dumps({"OSC": {"Amp_JawOpenAmp": 1.5}}))
     monkeypatch.setattr(C, "find_ini", lambda: str(d / "iniFile.ini"))
-    monkeypatch.setenv("CYMPLE_LINUX_CONFIG", str(tmp_path / "cfg"))
+    monkeypatch.setenv("OPENCYMPLE_LINUX_CONFIG", str(tmp_path / "cfg"))
     return d
 
 

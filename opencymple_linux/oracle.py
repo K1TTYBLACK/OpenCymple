@@ -137,7 +137,7 @@ class CympleBottle:
 
     def start(self, timeout=120.0):
         if udp_port_bound(P.INGEST_PORT, wildcard_only=True) or cymple_pids():
-            raise RuntimeError("Cymple or cymple-linux is already running (UDP %d); close it first" % P.INGEST_PORT)
+            raise RuntimeError("Cymple or opencymple-linux is already running (UDP %d); close it first" % P.INGEST_PORT)
         out = open(self.log_path, "ab") if self.log_path else subprocess.DEVNULL
         self.proc = subprocess.Popen(BOTTLES + ["run", "-b", self.bottle, "-p", self.program],
                                      stdout=out, stderr=subprocess.STDOUT, start_new_session=True)

@@ -1,4 +1,4 @@
-"""`opencymple`: the app for everyday use (the developer and oracle commands stay in `cymple-linux`).
+"""`opencymple`: the app for everyday use (the developer and oracle commands stay in `opencymple-linux`).
 
     opencymple                      window + tray icon (a running OpenCymple just opens its window)
     opencymple --headless           tray icon only

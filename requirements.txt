@@ -1,0 +1,11 @@
+# Runtime dependencies, mirroring [project] dependencies in pyproject.toml.
+# Tested with Python 3.12 (numpy 2.5, onnxruntime 1.31, opencv-python-headless 5.0, zeroconf 0.151).
+numpy>=1.24
+opencv-python-headless>=4.8
+onnxruntime>=1.17
+zeroconf>=0.130
+
+# Optional extras (see [project.optional-dependencies]):
+#   dev: pytest>=8
+#   gui: PySide6-Essentials>=6.8
+#   xr:  pyopenxr>=1.1.4, PyOpenGL>=3.1

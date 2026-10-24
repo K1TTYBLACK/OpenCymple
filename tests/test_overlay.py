@@ -6,8 +6,8 @@ import types
 
 import pytest
 
-from cymple_linux import overlay as G
-from cymple_linux.calib import MESH_TARGETS
+from opencymple_linux import overlay as G
+from opencymple_linux.calib import MESH_TARGETS
 
 Y, SCALE = -0.067157, 2.274527                       # the user's stored overlay geometry
 
@@ -94,7 +94,7 @@ class FakeRuntime:
         self.geometry = (y, s)
 
     def start_mesh(self, overlay=None):
-        from cymple_linux.calib import MeshCapture
+        from opencymple_linux.calib import MeshCapture
         self.calibrator.mesh = MeshCapture(overlay)
         self.started.set()
 
@@ -138,7 +138,7 @@ def press(h, x, inp_hand=1, stick=(0.0, 0.0), dt=0.011, now=0.0):
 
 
 def test_flow_adjust_capture_done(qt):
-    from cymple_linux.ui import xr_overlay as X
+    from opencymple_linux.ui import xr_overlay as X
     rt, x = FakeRuntime(), FakeXr()
     h = X.HeadsetCalibration(rt)
     assert (h.geometry.y, h.geometry.scale) == pytest.approx((Y, SCALE))
@@ -170,7 +170,7 @@ def test_flow_adjust_capture_done(qt):
 
 
 def test_back_returns_to_step_one(qt):
-    from cymple_linux.ui import xr_overlay as X
+    from opencymple_linux.ui import xr_overlay as X
     rt, x = FakeRuntime(), FakeXr()
     h = X.HeadsetCalibration(rt)
     press(h, x)
@@ -187,7 +187,7 @@ def test_back_returns_to_step_one(qt):
 
 
 def test_textures_paint(qt):
-    from cymple_linux.ui import xr_overlay as X
+    from opencymple_linux.ui import xr_overlay as X
     img = X.paint_main(current=4, captured={0, 1, 2, 3})
     assert img.width() == X.MAIN_PX
     px, py = X.dot_pixel(4)

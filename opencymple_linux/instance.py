@@ -58,7 +58,7 @@ def running():
 
 def spawn(extra_args=()):
     """Start `opencymple --headless` detached from this terminal; wait until it answers."""
-    cmd = [sys.executable, "-m", "cymple_linux.opencymple", "--headless", *extra_args]
+    cmd = [sys.executable, "-m", "opencymple_linux.opencymple", "--headless", *extra_args]
     subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      start_new_session=True, close_fds=True)
     end = time.monotonic() + START_TIMEOUT_S

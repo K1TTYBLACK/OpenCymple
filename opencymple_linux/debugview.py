@@ -1,6 +1,6 @@
 """Render one debug image of the pipeline state: raw frames with ROI, crops with landmarks.
 
-Stopgap until the preview window exists; `cymple-linux run --debug-image out.png` refreshes it
+Stopgap until the preview window exists; `opencymple-linux run --debug-image out.png` refreshes it
 once per second.
 """
 import cv2

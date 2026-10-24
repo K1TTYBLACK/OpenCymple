@@ -12,7 +12,7 @@ Landmark input: model2 `landmark_output[16]` as 8 (x, y) points, normalized 0..1
   pt7       eye-centre reference   (smoothed, nearly static)
 Eye index: 0 = left, 1 = right.  Output yaw > 0 = looking right, pitch > 0 = looking up.
 
-Self-test against a saved calibration:  cymple-linux selftest [--ini path/to/iniFile.ini]
+Self-test against a saved calibration:  opencymple-linux selftest [--ini path/to/iniFile.ini]
 """
 import math
 import time

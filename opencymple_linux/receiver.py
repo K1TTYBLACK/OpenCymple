@@ -2,7 +2,7 @@
 
 `Ingest` is the transport-independent core (protocol decode, per-stream reassembly as in
 imgReassClass / sub_1800a5a00, device registry, statistics). `UdpSource` feeds it from the
-network, `ReplaySource` from a capture file written by `--record` (or by cymple_udp_probe.py;
+network, `ReplaySource` from a capture file written by `--record` (or by opencymple_udp_probe.py;
 the CYMPCAP1 format is shared).
 """
 import fcntl

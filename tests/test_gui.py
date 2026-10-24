@@ -13,9 +13,9 @@ import pytest
 pytest.importorskip("PySide6")
 os.environ["QT_QPA_PLATFORM"] = "offscreen"          # never on the real desktop, whatever the session sets
 
-from cymple_linux import calibration as C                       # noqa: E402
-from cymple_linux import settings as S                          # noqa: E402
-from cymple_linux.gaze import gaze_filter_params                # noqa: E402
+from opencymple_linux import calibration as C                       # noqa: E402
+from opencymple_linux import settings as S                          # noqa: E402
+from opencymple_linux.gaze import gaze_filter_params                # noqa: E402
 
 HERE = os.path.dirname(__file__)
 CAPTURE = os.path.join(HERE, "..", "captures", "live-test-1.cap")
@@ -33,11 +33,11 @@ def _md5(path):
 @pytest.fixture
 def runtime(tmp_path, monkeypatch):
     """Runtime on our settings copy, imported from a copy of the real Cymple INI."""
-    from cymple_linux.runtime import Runtime
+    from opencymple_linux.runtime import Runtime
     cym = tmp_path / "Cymple"
     shutil.copytree(os.path.dirname(INI), cym, ignore=shutil.ignore_patterns("logs", "dataset"))
     monkeypatch.setattr(C, "find_ini", lambda: str(cym / "iniFile.ini"))
-    monkeypatch.setenv("CYMPLE_LINUX_CONFIG", str(tmp_path / "cfg"))
+    monkeypatch.setenv("OPENCYMPLE_LINUX_CONFIG", str(tmp_path / "cfg"))
     before = _md5(cym / "iniFile.ini")
     rt = Runtime(S.resolve_ini(), MODELS)
     rt.start()
@@ -56,7 +56,7 @@ def _pump(app, seconds):
 
 def test_window_changes_apply_and_save(runtime):
     from PySide6.QtWidgets import QApplication
-    from cymple_linux.ui.app import MainWindow
+    from opencymple_linux.ui.app import MainWindow
     app = QApplication.instance() or QApplication([])
     rt = runtime
     win = MainWindow(rt, argparse.Namespace(no_osc=True, osc_listen=0), S.load_options())
@@ -99,7 +99,7 @@ def test_window_changes_apply_and_save(runtime):
 
 
 def test_osc_output_and_avatar_amplitudes(runtime):
-    from cymple_linux.outputs.avatar import AvatarInfo
+    from opencymple_linux.outputs.avatar import AvatarInfo
     rt = runtime
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("127.0.0.1", 0))
@@ -136,8 +136,8 @@ def test_osc_output_and_avatar_amplitudes(runtime):
 
 def test_calibration_flows_on_replay(runtime):
     from PySide6.QtWidgets import QApplication
-    from cymple_linux import calib as K
-    from cymple_linux.ui.calibration import MeshTargetWindow
+    from opencymple_linux import calib as K
+    from opencymple_linux.ui.calibration import MeshTargetWindow
     app = QApplication.instance() or QApplication([])
     rt = runtime
     _pump(app, 1.5)
@@ -179,7 +179,7 @@ def test_headset_flow_on_replay(runtime):
     """The overlay's steps without OpenXR: geometry from the sticks, captures from the trigger, the
     mesh saved with that geometry."""
     from PySide6.QtWidgets import QApplication
-    from cymple_linux.ui import xr_overlay as X
+    from opencymple_linux.ui import xr_overlay as X
     app = QApplication.instance() or QApplication([])
     rt = runtime
     _pump(app, 1.5)

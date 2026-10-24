@@ -86,7 +86,7 @@ class Beeper:
 
     def __init__(self, enabled=True):
         self.player = (shutil.which("pw-play") or shutil.which("paplay")) if enabled else None
-        self.dir = tempfile.mkdtemp(prefix="cymple-beeps-")
+        self.dir = tempfile.mkdtemp(prefix="opencymple-beeps-")
         self.files = {}
         for name, freqs in (("go", [880]), ("relax", [440]), ("done", [660, 660, 880])):
             self.files[name] = os.path.join(self.dir, name + ".wav")

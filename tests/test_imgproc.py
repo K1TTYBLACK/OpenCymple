@@ -1,7 +1,7 @@
 import numpy as np
 
-from cymple_linux import imgproc
-from cymple_linux.eye import LANDMARK_SWAPS, ROI_SWAPS, neutral_rescale, unmirror_points
+from opencymple_linux import imgproc
+from opencymple_linux.eye import LANDMARK_SWAPS, ROI_SWAPS, neutral_rescale, unmirror_points
 
 
 def test_tensor_recipe():

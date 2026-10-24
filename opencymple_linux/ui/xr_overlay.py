@@ -186,8 +186,8 @@ class XrOverlay:
         self.running = self.exit_requested = False
         self.state = None
         self.instance = xr.create_instance(xr.InstanceCreateInfo(
-            application_info=xr.ApplicationInfo(application_name="cymple-linux calibration",
-                                                application_version=1, engine_name="cymple-linux",
+            application_info=xr.ApplicationInfo(application_name="opencymple-linux calibration",
+                                                application_version=1, engine_name="opencymple-linux",
                                                 engine_version=1, api_version=xr.Version(1, 0, 0)),
             enabled_extension_names=list(EXTENSIONS)))
         self.system = xr.get_system(self.instance, xr.SystemGetInfo(form_factor=xr.FormFactor.HEAD_MOUNTED_DISPLAY))
@@ -230,7 +230,7 @@ class XrOverlay:
         path = lambda s: xr.string_to_path(self.instance, s)         # noqa: E731
         self.hands = [path("/user/hand/left"), path("/user/hand/right")]
         self.action_set = xr.create_action_set(self.instance, xr.ActionSetCreateInfo(
-            action_set_name="cymple_gaze_calibration", localized_action_set_name="Cymple gaze calibration"))
+            action_set_name="opencymple_gaze_calibration", localized_action_set_name="OpenCymple gaze calibration"))
 
         def action(name, kind, label, per_hand=False):
             return xr.create_action(self.action_set, xr.ActionCreateInfo(

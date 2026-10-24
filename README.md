@@ -1,4 +1,4 @@
-# cymple-linux (OpenCymple)
+# OpenCymple (opencymple-linux)
 
 Native Linux runtime for Cymple eye/face trackers. It receives the ESP32 camera streams, runs
 Cymple's own ONNX models (decrypted in memory from the installed `model/*.bin`), computes Cymple's
@@ -8,7 +8,7 @@ involved.
 
 Status: receiver, inference, the whole 70-value array (eyes M3, mouth M4) and VRChat OSC for eyes
 and mouth (M2, M5) are done, checked against Windows Cymple and verified in VRChat. The preview
-window with Cymple's sliders and switches (M6, `cymple-linux gui`) and Cymple's calibration flows
+window with Cymple's sliders and switches (M6, `opencymple-linux gui`) and Cymple's calibration flows
 (M7: recenter with expression neutral, coarse range, 13-point gaze mesh) are done, and the 13-point
 calibration runs in the headset as an OpenXR overlay (M8). Everyday use is the `opencymple` app: tray
 icon, headless mode, single-instance commands, desktop entry and WiVRn's application list (M9).
@@ -29,11 +29,11 @@ The Cymple install is found automatically in the Bottles prefix (`iniFile.ini` f
 `CYMPLE_INI` / `CYMPLE_MODELS`. Close the Windows Cymple app first: only one program can own UDP 23303.
 
 Settings: the first `run`, `gui` or `calibrate-roi` copies Cymple's `iniFile.ini` and
-`avatarParaments/` into `~/.config/cymple-linux/` (`CYMPLE_LINUX_CONFIG` overrides) and works on
+`avatarParaments/` into `~/.config/opencymple-linux/` (`OPENCYMPLE_LINUX_CONFIG` overrides) and works on
 that copy from then on, in Cymple's key format. Nothing here changes the Windows app's files
 except `config export`, which backs them up first and refuses while Windows Cymple runs (it
 rewrites its INI on exit). The oracle commands keep using Cymple's own INI, since the Windows app
-runs with it. Our own options (VRChat target, window size) are in `cymple-linux.json` there.
+runs with it. Our own options (VRChat target, window size) are in `opencymple-linux.json` there.
 
 ## Commands
 
@@ -43,28 +43,28 @@ runs with it. Our own options (VRChat target, window size) are in `cymple-linux.
 .venv/bin/opencymple calibrate precise                       # 13-point calibration in the headset
 .venv/bin/opencymple recenter                                # recenter both eyes (also: calibrate coarse, status, quit)
 .venv/bin/opencymple install                                 # desktop entry, icon, ~/.local/bin link (uninstall removes them)
-.venv/bin/cymple-linux gui                                    # live, in a window (VRChat output as last set there)
-.venv/bin/cymple-linux gui --calibrate                        # ... and open the 13-point calibration in the headset
-.venv/bin/cymple-linux gui --replay captures/corpus1.cap --loop  # the window on a capture
-.venv/bin/cymple-linux config                                 # where our settings copy is, where it came from
-.venv/bin/cymple-linux config export --dry-run                # what export would write into Cymple's INI
-.venv/bin/cymple-linux config export                          # write our changed keys + amplitude files back
-.venv/bin/cymple-linux config import --force                  # re-copy Cymple's settings (ours kept as backup)
-.venv/bin/cymple-linux run                                    # live: beacon, receive, infer, status line each second
-.venv/bin/cymple-linux run --osc                              # ... and drive the VRChat avatar (OSC to 127.0.0.1:9000)
-.venv/bin/cymple-linux run --osc --osc-avatar none            # default addresses + VRChat native eye tracking only
-.venv/bin/cymple-linux run --debug-image /tmp/cymple.png      # also render frames + ROI + landmarks every second
-.venv/bin/cymple-linux run --record session.cap               # save raw datagrams for later replay
-.venv/bin/cymple-linux run --replay captures/live-test-1.cap  # same pipeline from a capture
-.venv/bin/cymple-linux run --json                             # machine-readable status
-.venv/bin/cymple-linux record --name corpus1                  # guided, labelled recording (beep cues, ~3.5 min)
-.venv/bin/cymple-linux oracle-record captures/corpus1.cap     # replay into Windows Cymple (Bottles), log its 70 values
-.venv/bin/cymple-linux oracle-compare captures/corpus1.cap    # our deterministic replay vs that log, per field
-.venv/bin/cymple-linux oracle-record captures/corpus1.cap --mode osc   # same, Cymple's direct OSC instead
-.venv/bin/cymple-linux oracle-compare captures/corpus1.cap --golden captures/corpus1.oracle-osc.jsonl  # OSC formulas
-.venv/bin/cymple-linux models --bench 200                     # load all 5 models, show I/O, time them
-.venv/bin/cymple-linux calibrate-roi --write-ini              # eye ROI quads via model0 into our settings copy (backup kept)
-.venv/bin/cymple-linux selftest                               # gaze mesh math vs saved calibration
+.venv/bin/opencymple-linux gui                                    # live, in a window (VRChat output as last set there)
+.venv/bin/opencymple-linux gui --calibrate                        # ... and open the 13-point calibration in the headset
+.venv/bin/opencymple-linux gui --replay captures/corpus1.cap --loop  # the window on a capture
+.venv/bin/opencymple-linux config                                 # where our settings copy is, where it came from
+.venv/bin/opencymple-linux config export --dry-run                # what export would write into Cymple's INI
+.venv/bin/opencymple-linux config export                          # write our changed keys + amplitude files back
+.venv/bin/opencymple-linux config import --force                  # re-copy Cymple's settings (ours kept as backup)
+.venv/bin/opencymple-linux run                                    # live: beacon, receive, infer, status line each second
+.venv/bin/opencymple-linux run --osc                              # ... and drive the VRChat avatar (OSC to 127.0.0.1:9000)
+.venv/bin/opencymple-linux run --osc --osc-avatar none            # default addresses + VRChat native eye tracking only
+.venv/bin/opencymple-linux run --debug-image /tmp/opencymple.png      # also render frames + ROI + landmarks every second
+.venv/bin/opencymple-linux run --record session.cap               # save raw datagrams for later replay
+.venv/bin/opencymple-linux run --replay captures/live-test-1.cap  # same pipeline from a capture
+.venv/bin/opencymple-linux run --json                             # machine-readable status
+.venv/bin/opencymple-linux record --name corpus1                  # guided, labelled recording (beep cues, ~3.5 min)
+.venv/bin/opencymple-linux oracle-record captures/corpus1.cap     # replay into Windows Cymple (Bottles), log its 70 values
+.venv/bin/opencymple-linux oracle-compare captures/corpus1.cap    # our deterministic replay vs that log, per field
+.venv/bin/opencymple-linux oracle-record captures/corpus1.cap --mode osc   # same, Cymple's direct OSC instead
+.venv/bin/opencymple-linux oracle-compare captures/corpus1.cap --golden captures/corpus1.oracle-osc.jsonl  # OSC formulas
+.venv/bin/opencymple-linux models --bench 200                     # load all 5 models, show I/O, time them
+.venv/bin/opencymple-linux calibrate-roi --write-ini              # eye ROI quads via model0 into our settings copy (backup kept)
+.venv/bin/opencymple-linux selftest                               # gaze mesh math vs saved calibration
 .venv/bin/python -m pytest
 ```
 
@@ -85,9 +85,9 @@ nothing.
 | `imgproc.py` | JPEG → gray, the shared tensor recipe, quad warp, rotation, fixed mouth rect |
 | `eye.py` | Per-eye landmark pipeline, ROI calibration with model0 |
 | `mouth.py` | Mouth V1: rotation, auto-ROI scheduler with smoothing, model4 |
-| `gaze.py` | Feature, 13-point mesh, binocular post-processing, One-Euro (moved from `cymple_gaze.py`) |
+| `gaze.py` | Feature, 13-point mesh, binocular post-processing, One-Euro (moved from `opencymple_gaze.py`) |
 | `calibration.py` | Reads Cymple's `iniFile.ini` format; writes keys in place (`update_ini`) |
-| `settings.py` | Our copy in `~/.config/cymple-linux/`: import, batched writes, amplitude sets, export |
+| `settings.py` | Our copy in `~/.config/opencymple-linux/`: import, batched writes, amplitude sets, export |
 | `runtime.py` | What `run` and `gui` share: models, pipeline, source, VRChat output, live setting changes, calibration runs |
 | `calib.py` | Recenter + expression neutral, coarse range, 13-point gaze mesh (M7), writing Cymple's INI keys |
 | `face.py` | Eye core (M3): lid close, squint, wide/brow fields, closed-eye hold, blink state machine; mouth core (M4): filters, mapping, amplitudes |
@@ -179,7 +179,7 @@ SRanipal lip set and the legacy eye set (head pose left out).
 
 ## Window (M6)
 
-`cymple-linux gui` runs the same pipeline as `run` with a window in the same process (Qt Widgets,
+`opencymple-linux gui` runs the same pipeline as `run` with a window in the same process (Qt Widgets,
 Fusion style, dark unless the desktop asks for light). The pages follow Windows Cymple's QML
 (`uiApi.dll`): same controls, ranges and steps, and the same INI keys.
 
@@ -267,7 +267,7 @@ not saved.
 
 ## OpenCymple (M9)
 
-`opencymple` is the app for everyday use; `cymple-linux` keeps the developer and oracle commands.
+`opencymple` is the app for everyday use; `opencymple-linux` keeps the developer and oracle commands.
 
 - One per user: the running app listens on `$XDG_RUNTIME_DIR/opencymple.sock` (one JSON line per
   request). Commands (`calibrate precise|coarse`, `recenter`, `status`, `quit`) go to it; when none
@@ -283,7 +283,7 @@ not saved.
   it is not selected there (WayVR stays the one WiVRn starts). There is no `TryExec`, since WiVRn's
   flatpak can't see the venv path. It also links `~/.local/bin/opencymple` to the venv's script
   (only a link of its own is ever replaced or removed), so `opencymple` works in any shell.
-- The settings copy stays in `~/.config/cymple-linux/` (`cymple-linux.json` holds the window
+- The settings copy stays in `~/.config/opencymple-linux/` (`opencymple-linux.json` holds the window
   geometry and VRChat output options for both commands).
 
 Checked on the desktop on 2026-10-24 (Hyprland): the tray item registers with the menu above, Open

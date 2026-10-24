@@ -1,7 +1,7 @@
 import struct
 
-from cymple_linux import calibration as C
-from cymple_linux.params import FIELDS, INDEX, decode_vrcft, encode_vrcft
+from opencymple_linux import calibration as C
+from opencymple_linux.params import FIELDS, INDEX, decode_vrcft, encode_vrcft
 
 INI = """[Others]
 LANGUAGE = ui_EN.qm

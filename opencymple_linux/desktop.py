@@ -41,7 +41,7 @@ def executable():
     script = os.path.join(os.path.dirname(sys.executable), APP_ID)
     if os.path.isfile(script) and os.access(script, os.X_OK):
         return [script]
-    return [sys.executable, "-m", "cymple_linux.opencymple"]
+    return [sys.executable, "-m", "opencymple_linux.opencymple"]
 
 
 def _quote(arg):
@@ -58,12 +58,12 @@ def entry_text(cmd=None):
              "Type=Application",
              "Name=OpenCymple",
              "GenericName=Eye and face tracking",
-             "Comment=Cymple eye and face tracking for VRChat",
+             "Comment=OpenCymple eye and face tracking for VRChat",
              "Exec=%s" % exe,                 # no TryExec: WiVRn's flatpak cannot see the path
              "Icon=%s" % APP_ID,
              "Terminal=false",
              "Categories=Utility;X-WiVRn-VR;",
-             "Keywords=VR;eye tracking;face tracking;Cymple;VRChat;",
+             "Keywords=VR;eye tracking;face tracking;OpenCymple;VRChat;",
              "StartupWMClass=%s" % APP_ID,
              "Actions=calibrate;recenter;quit;",
              ""]

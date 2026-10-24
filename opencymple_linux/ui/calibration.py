@@ -17,7 +17,7 @@ class MeshTargetWindow(QWidget):
     def __init__(self, runtime, parent=None):
         super().__init__(parent, Qt.WindowType.Window)
         self.rt = runtime
-        self.setWindowTitle("Cymple Linux: 13-point gaze calibration")
+        self.setWindowTitle("OpenCymple Linux: 13-point gaze calibration")
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.scale = 0.40                        # outer ring radius as a fraction of the shorter side
         self.message = "Look at the yellow dot, then press Space."

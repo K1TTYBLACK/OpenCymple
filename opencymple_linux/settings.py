@@ -1,10 +1,10 @@
-"""cymple-linux's own settings: a copy of Cymple's iniFile.ini and avatarParaments/ in
-~/.config/cymple-linux/ ($CYMPLE_LINUX_CONFIG overrides), imported once on first use.
+"""opencymple-linux's own settings: a copy of Cymple's iniFile.ini and avatarParaments/ in
+~/.config/opencymple-linux/ ($OPENCYMPLE_LINUX_CONFIG overrides), imported once on first use.
 
 Keys and value formats stay Cymple's, so calibration.load() reads the copy unchanged and
-`cymple-linux config export` can write it back. Tuning here never touches the Windows app's
+`opencymple-linux config export` can write it back. Tuning here never touches the Windows app's
 files; only an explicit export does (with a backup). Options of our own (VRChat OSC target,
-...) live in cymple-linux.json next to the INI.
+...) live in opencymple-linux.json next to the INI.
 """
 import json
 import logging
@@ -20,16 +20,16 @@ log = logging.getLogger(__name__)
 
 INI_NAME = "iniFile.ini"
 AVATAR_DIR = "avatarParaments"
-OPTIONS_NAME = "cymple-linux.json"
+OPTIONS_NAME = "opencymple-linux.json"
 EXPORT_SECTIONS = ("OSC", "Cymple_Mouth", "CympleFace_LeftEye", "CympleFace_RightEye")
 DEFAULT_OPTIONS = {"osc": {"enabled": True, "target": "127.0.0.1:9000", "avatar": "auto"}}
 
 
 def config_dir():
-    env = os.environ.get("CYMPLE_LINUX_CONFIG")
+    env = os.environ.get("OPENCYMPLE_LINUX_CONFIG")
     if env:
         return env
-    return os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "cymple-linux")
+    return os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "opencymple-linux")
 
 
 def own_ini(directory=None):

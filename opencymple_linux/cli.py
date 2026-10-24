@@ -1,4 +1,4 @@
-"""cymple-linux command line."""
+"""opencymple-linux command line."""
 import argparse
 import json
 import logging
@@ -12,7 +12,7 @@ from . import __version__
 from . import calibration as C
 from . import protocol as P
 
-log = logging.getLogger("cymple_linux")
+log = logging.getLogger("opencymple_linux")
 
 
 def _paths(args, own=True):
@@ -29,7 +29,7 @@ def _paths(args, own=True):
 
 
 def _add_common(p):
-    p.add_argument("--ini", help="settings INI in Cymple's format; default: ours in ~/.config/cymple-linux "
+    p.add_argument("--ini", help="settings INI in Cymple's format; default: ours in ~/.config/opencymple-linux "
                                  "(oracle commands: Cymple's own iniFile.ini)")
     p.add_argument("--models", help="directory with model0.bin ... model6.bin; default: next to the INI")
     p.add_argument("--provider", default="auto",
@@ -340,7 +340,7 @@ def cmd_selftest(args):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="cymple-linux", description="Native Linux runtime for Cymple eye/face trackers.")
+    ap = argparse.ArgumentParser(prog="opencymple-linux", description="Native Linux runtime for Cymple eye/face trackers.")
     ap.add_argument("--version", action="version", version="%(prog)s " + __version__)
     ap.add_argument("-v", "--verbose", action="store_true")
     sub = ap.add_subparsers(dest="cmd", required=True)

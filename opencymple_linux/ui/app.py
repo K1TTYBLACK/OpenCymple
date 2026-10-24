@@ -1,4 +1,4 @@
-"""`cymple-linux gui`: the pipeline of `run` plus a window in the same process.
+"""`opencymple-linux gui`: the pipeline of `run` plus a window in the same process.
 
 Left: per-stream previews (raw frame with the ROI, model crop with landmarks, rates) and the
 gaze plot. Right: the 70 values, Cymple's eye and mouth settings, the 28 amplitudes and the
@@ -705,7 +705,7 @@ def run_gui(args, ini, model_dir, source_kwargs):
     # Qt's Wayland text-input logs a warning on every focus change; keep the terminal readable
     os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.wayland.textinput=false")
     app = QApplication.instance() or QApplication(sys.argv[:1])
-    app.setApplicationName("cymple-linux")
+    app.setApplicationName("opencymple-linux")
     from PySide6.QtGui import QIcon
     from ..desktop import icon_path
     app.setWindowIcon(QIcon(icon_path()))

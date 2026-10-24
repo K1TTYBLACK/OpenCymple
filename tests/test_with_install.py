@@ -6,8 +6,8 @@ import cv2
 import numpy as np
 import pytest
 
-from cymple_linux import calibration as C
-from cymple_linux.receiver import Ingest, ReplaySource
+from opencymple_linux import calibration as C
+from opencymple_linux.receiver import Ingest, ReplaySource
 
 HERE = os.path.dirname(__file__)
 CAPTURE = os.path.join(HERE, "..", "captures", "live-test-1.cap")
@@ -23,7 +23,7 @@ def test_replay_capture_frame_counts():
     src = ReplaySource(ing, CAPTURE, speed=0)
     src.run()
     counts = {s: sum(f.stream == s for f in frames) for s in (0, 1, 2)}
-    assert counts == {0: 992, 1: 989, 2: 987}         # same as cymple_udp_probe.py on this file
+    assert counts == {0: 992, 1: 989, 2: 987}         # same as opencymple_udp_probe.py on this file
     assert not ing.errors
     assert {d.name for d in ing.devices.values()} == {"EYE_V3", "MOUTH_SINGLE_V1"}
 
@@ -33,12 +33,12 @@ CORPUS = os.path.join(HERE, "..", "captures", "corpus1.cap")
 
 
 @need_install
-@pytest.mark.skipif(not (os.environ.get("CYMPLE_ORACLE_TESTS") and os.path.exists(ORACLE)),
-                    reason="set CYMPLE_ORACLE_TESTS=1 (takes ~3 min) and record corpus1 + its oracle")
+@pytest.mark.skipif(not (os.environ.get("OPENCYMPLE_ORACLE_TESTS") and os.path.exists(ORACLE)),
+                    reason="set OPENCYMPLE_ORACLE_TESTS=1 (takes ~3 min) and record corpus1 + its oracle")
 def test_fields_match_oracle():
-    from cymple_linux.models import load_models
-    from cymple_linux.oracle import compare
-    from cymple_linux.pipeline import Pipeline
+    from opencymple_linux.models import load_models
+    from opencymple_linux.oracle import compare
+    from opencymple_linux.pipeline import Pipeline
     pipeline = Pipeline(load_models(MODELS, ["eye_landmark", "mouth_roi", "mouth_v1"]), C.load(INI))
     stats = compare(CORPUS, ORACLE, pipeline, lambda p, t: p.build_packet(t))["fields"]
     assert len(stats) == 70
@@ -52,7 +52,7 @@ def test_fields_match_oracle():
 
 @need_install
 def test_models_load_from_memory():
-    from cymple_linux.models import SPECS, load_models
+    from opencymple_linux.models import SPECS, load_models
     models = load_models(MODELS, list(SPECS))
     shapes = {n: [tuple(o.shape) for o in m.session.get_outputs()] for n, m in models.items()}
     assert shapes == {"eye_roi": [(1, 8)], "eye_landmark": [(1, 16), (1, 3)], "mouth_roi": [(1, 8)],
@@ -72,8 +72,8 @@ def _dataset_frame(side):
 @need_install
 @pytest.mark.parametrize("eye,side", [(0, "left"), (1, "right")])
 def test_eye_roi_and_landmarks_on_dataset(eye, side):
-    from cymple_linux.eye import EyeTracker, calibrate_roi, landmark_sanity
-    from cymple_linux.models import load_models
+    from opencymple_linux.eye import EyeTracker, calibrate_roi, landmark_sanity
+    from opencymple_linux.models import load_models
     cal = C.load(INI)
     m = load_models(MODELS, ["eye_roi", "eye_landmark"])
     frame = _dataset_frame(side)
@@ -88,10 +88,10 @@ def test_eye_roi_and_landmarks_on_dataset(eye, side):
 ORACLE_OSC = os.path.join(HERE, "..", "captures", "corpus1.oracle-osc.jsonl")
 
 
-@pytest.mark.skipif(not (os.environ.get("CYMPLE_ORACLE_TESTS") and os.path.exists(ORACLE_OSC)),
-                    reason="set CYMPLE_ORACLE_TESTS=1 and record corpus1's --mode osc oracle")
+@pytest.mark.skipif(not (os.environ.get("OPENCYMPLE_ORACLE_TESTS") and os.path.exists(ORACLE_OSC)),
+                    reason="set OPENCYMPLE_ORACLE_TESTS=1 and record corpus1's --mode osc oracle")
 def test_osc_formulas_match_cymple():
-    from cymple_linux.oracle import osc_formula_check
+    from opencymple_linux.oracle import osc_formula_check
 
     stats, _ = osc_formula_check(ORACLE_OSC)
     assert len(stats) == 400                       # every address Cymple sent on corpus1
