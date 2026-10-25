@@ -842,7 +842,6 @@ class MainWindow(QMainWindow):
             self.amp_sliders[slot].set_value(v)
         avatar, own = view
         name = self._avatar_name(avatar)
-        readonly = self.rt.writer.readonly
         if own:
             self.amp_scope.setText("Editing the own set of %s. Deleting it goes back to the default set." % name)
             self.amp_button.setText("Delete this avatar's set")
@@ -850,7 +849,7 @@ class MainWindow(QMainWindow):
             self.amp_scope.setText("Editing the default set, used by every avatar without its own set%s."
                                    % (" (current avatar: %s)" % name if avatar else ""))
             self.amp_button.setText("Give %s its own set" % ("this avatar" if avatar else "an avatar"))
-        self.amp_button.setEnabled(bool(avatar) and not readonly)
+        self.amp_button.setEnabled(bool(avatar))
 
     def _amp_button(self):
         if self.rt.amps_own():
@@ -903,7 +902,7 @@ class MainWindow(QMainWindow):
             self.rt.stop_osc()
 
     def _import(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Import", "", "OpenCymple config (*.json *.ini);;All files (*)")
+        path, _ = QFileDialog.getOpenFileName(self, "Import", "", "OpenCymple config (*.json);;All files (*)")
         if not path:
             return
         self.rt.flush()                          # pending changes go into our copy first, so the backup has them

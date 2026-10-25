@@ -15,3 +15,6 @@ captures/
 .env
 *.ini
 README_AGENT.md
+
+# Built AppImage (attached to GitHub releases instead)
+*.AppImage

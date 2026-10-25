@@ -11,8 +11,8 @@ from opencymple.receiver import Ingest, ReplaySource
 
 HERE = os.path.dirname(__file__)
 CAPTURE = os.path.join(HERE, "..", "captures", "live-test-1.cap")
-INI = C.find_ini()
-MODELS = C.find_model_dir(INI) if INI else None
+INI = os.environ.get("CYMPLE_INI")                   # a calibrated Windows Cymple INI, for the install tests
+MODELS = os.environ.get("CYMPLE_MODELS")
 need_install = pytest.mark.skipif(not (INI and MODELS), reason="no Cymple install found")
 
 

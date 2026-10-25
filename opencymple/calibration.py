@@ -1,10 +1,9 @@
-"""Read (and selectively update) Cymple's own iniFile.ini so existing calibration carries over.
+"""Read (and selectively update) our iniFile.ini (Cymple's key format). Every key may be missing.
 
-Defaults for keys the INI may lack come from the faceOscClass constructor (sub_1800b67d0):
+Defaults for missing keys come from the faceOscClass constructor (sub_1800b67d0):
 eyeExpressionFilter 0.1, eyeGazeFilter 0.8, eyeBlinkCloseAmplitude 0.2, eyeGazeAmplitude 1.0,
 eyeSquintGazeCompensation 0.
 """
-import glob
 import os
 import re
 import shutil
@@ -205,36 +204,6 @@ def amp_slots(amps):
         v = amps.get(k, amps.get(AMP_FALLBACK.get(k, ""), 1.0))
         out.append(min(max(float(v), 0.0), 5.0))
     return out
-
-
-def find_ini():
-    """$CYMPLE_INI, else the first Cymple iniFile.ini found in a Bottles or Wine prefix."""
-    env = os.environ.get("CYMPLE_INI")
-    if env:
-        return env
-    patterns = [
-        "~/.var/app/com.usebottles.bottles/data/bottles/bottles/*/drive_c/users/*/AppData/Local/Cymple/iniFile.ini",
-        "~/.local/share/bottles/bottles/*/drive_c/users/*/AppData/Local/Cymple/iniFile.ini",
-        "~/.wine/drive_c/users/*/AppData/Local/Cymple/iniFile.ini",
-    ]
-    for p in patterns:
-        hits = sorted(glob.glob(os.path.expanduser(p)))
-        if hits:
-            return hits[0]
-    return None
-
-
-def find_model_dir(ini_path=None):
-    """$CYMPLE_MODELS, else Program Files/Cymple/model in the same prefix as the INI."""
-    env = os.environ.get("CYMPLE_MODELS")
-    if env:
-        return env
-    if ini_path:
-        drive_c = os.path.abspath(os.path.join(os.path.dirname(ini_path), *[".."] * 5))
-        cand = os.path.join(drive_c, "Program Files", "Cymple", "model")
-        if os.path.isdir(cand):
-            return cand
-    return None
 
 
 def update_ini(path, section, values, backup=True):

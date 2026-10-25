@@ -1,10 +1,8 @@
-"""opencymple-linux's own settings: a copy of Cymple's iniFile.ini and avatarParaments/ in
-~/.config/opencymple-linux/ ($OPENCYMPLE_LINUX_CONFIG overrides), imported once on first use.
+"""OpenCymple's own settings in ~/.config/opencymple/ ($OPENCYMPLE_CONFIG overrides): iniFile.ini
+(calibration and tuning), avatarParaments/ (amplitude sets) and opencymple.json (our options).
 
-Keys and value formats stay Cymple's, so calibration.load() reads the copy unchanged and
-`opencymple-linux config export` can write it back. Tuning here never touches the Windows app's
-files; only an explicit export does (with a backup). Options of our own (VRChat OSC target,
-...) live in opencymple-linux.json next to the INI.
+A fresh install has none of these: every value comes from the defaults in calibration.py and the
+files appear as soon as something is changed. The INI keeps Cymple's key format.
 """
 import json
 import logging
@@ -20,17 +18,17 @@ log = logging.getLogger(__name__)
 
 INI_NAME = "iniFile.ini"
 AVATAR_DIR = "avatarParaments"
-OPTIONS_NAME = "opencymple-linux.json"
-EXPORT_SECTIONS = ("OSC", "Cymple_Mouth", "CympleFace_LeftEye", "CympleFace_RightEye")
+OPTIONS_NAME = "opencymple.json"
 DEFAULT_OPTIONS = {"osc": {"enabled": True, "target": "127.0.0.1:9000", "avatar": "auto", "config_dir": ""},
+                   "models_dir": "",
                    "afk": {"enabled": False}}
 
 
 def config_dir():
-    env = os.environ.get("OPENCYMPLE_LINUX_CONFIG")
+    env = os.environ.get("OPENCYMPLE_CONFIG")
     if env:
         return env
-    return os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "opencymple-linux")
+    return os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "opencymple")
 
 
 def own_ini(directory=None):
@@ -41,50 +39,27 @@ def _stamp():
     return time.strftime("%Y%m%d-%H%M%S")
 
 
-def import_from_cymple(source_ini, directory=None, force=False):
-    """Copy Cymple's INI and avatarParaments/ into our directory (only once unless `force`;
-    a forced import keeps the previous copy as a backup). Returns our INI path."""
-    d = directory or config_dir()
-    dst = own_ini(d)
-    if os.path.exists(dst) and not force:
-        return dst
-    os.makedirs(d, exist_ok=True)
-    stamp = _stamp()
-    dst_av = os.path.join(d, AVATAR_DIR)
-    if os.path.exists(dst):
-        shutil.copy2(dst, "%s.bak-%s" % (dst, stamp))
-        if os.path.isdir(dst_av):                    # its amplitude sets are overwritten below
-            shutil.copytree(dst_av, "%s.bak-%s" % (dst_av, stamp), dirs_exist_ok=True)
-    shutil.copy2(source_ini, dst)
-    src_av = os.path.join(os.path.dirname(source_ini), AVATAR_DIR)
-    if os.path.isdir(src_av):
-        shutil.copytree(src_av, dst_av, dirs_exist_ok=True)
-    opts = load_options(d)
-    opts.update(imported_from=os.path.abspath(source_ini), imported_at=time.strftime("%Y-%m-%d %H:%M:%S"))
-    save_options(opts, d)
-    log.info("imported Cymple settings from %s into %s", source_ini, d)
+def resolve_ini(explicit=None):
+    """The INI a command works on: `explicit`, else ours (created empty on first use: all defaults)."""
+    if explicit:
+        return explicit
+    dst = own_ini()
+    if not os.path.exists(dst):
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        open(dst, "w").close()
     return dst
 
 
-def resolve_ini(explicit=None, own=True):
-    """The INI a command works on: `explicit`, else our copy (imported from Cymple's INI the
-    first time), or Cymple's own INI with own=False (the oracle commands need that one)."""
-    if explicit:
-        return explicit
-    cymple = C.find_ini()
-    if not own:
-        return cymple
-    if os.path.exists(own_ini()):
-        return own_ini()
-    return import_from_cymple(cymple) if cymple else None
-
-
-def is_cymple_ini(path):
-    cymple = C.find_ini()
-    try:
-        return bool(cymple) and os.path.samefile(path, cymple)
-    except OSError:
-        return False
+def find_model_dir(explicit=None):
+    """Directory with model0.bin ... model6.bin: --models, $CYMPLE_MODELS, "models_dir" in
+    opencymple.json, <config dir>/model, else the models bundled in the AppImage."""
+    appdir = os.environ.get("APPDIR")
+    for cand in (explicit, os.environ.get("CYMPLE_MODELS"), load_options().get("models_dir"),
+                 os.path.join(config_dir(), "model"),
+                 appdir and os.path.join(appdir, "usr", "share", "opencymple", "model")):
+        if cand and os.path.isdir(cand) and os.path.isfile(os.path.join(cand, "model0.bin")):
+            return cand
+    return None
 
 
 # ---- our own options --------------------------------------------------------------------------
@@ -125,12 +100,10 @@ def ini_value(v):
 
 
 class IniWriter:
-    """Collects key changes and writes them in one go (update_ini keeps the rest of the file).
-    Refuses Cymple's own INI: that one changes only through `config export`."""
+    """Collects key changes and writes them in one go (update_ini keeps the rest of the file)."""
 
     def __init__(self, path):
         self.path = path
-        self.readonly = is_cymple_ini(path)
         self.pending = {}
         self.lock = threading.Lock()
 
@@ -141,7 +114,7 @@ class IniWriter:
     def flush(self):
         with self.lock:
             pending, self.pending = self.pending, {}
-            if self.readonly or not pending:
+            if not pending:
                 return False
             for section, values in pending.items():
                 C.update_ini(self.path, section, values, backup=False)
@@ -236,16 +209,16 @@ def export_bundle(path, own=None, directory=None):
 
 
 def import_bundle(path, directory=None):
-    """Apply a file made by export_bundle (a bare iniFile.ini also works) to our INI and amplitude
+    """Apply a file made by export_bundle to our INI and amplitude
     sets, keeping the INI's formatting. Replaced files are kept as .bak-<time> copies."""
     d = directory or config_dir()
     try:
         with open(path, encoding="utf-8") as f:
             bundle = json.load(f)
-        if not isinstance(bundle, dict) or bundle.get("format") != BUNDLE_FORMAT:
-            raise ValueError("not an OpenCymple config file")
-    except json.JSONDecodeError:
-        bundle = {"settings": C.read_ini(path)}
+    except json.JSONDecodeError as e:
+        raise ValueError("not an OpenCymple config file: %s" % e)
+    if not isinstance(bundle, dict) or bundle.get("format") != BUNDLE_FORMAT:
+        raise ValueError("not an OpenCymple config file")
     os.makedirs(d, exist_ok=True)
     stamp = _stamp()
     dst = own_ini(d)
@@ -269,52 +242,3 @@ def import_bundle(path, directory=None):
             json.dump(content, f, indent=1)
     log.info("imported settings from %s into %s", path, d)
     return dst
-
-
-# ---- export back to the Windows app ------------------------------------------------------------
-
-def export_plan(own, target, directory=None):
-    """({section: {key: value}} that differ in our INI, [avatar JSON names that differ])."""
-    ours, theirs = C.read_ini(own), C.read_ini(target)
-    keys = {}
-    for section in EXPORT_SECTIONS:
-        diff = {k: v for k, v in ours.get(section, {}).items() if theirs.get(section, {}).get(k) != v}
-        if diff:
-            keys[section] = diff
-    src_av = os.path.join(directory or os.path.dirname(own), AVATAR_DIR)
-    dst_av = os.path.join(os.path.dirname(target), AVATAR_DIR)
-    files = []
-    if os.path.isdir(src_av):
-        for name in sorted(os.listdir(src_av)):
-            if not name.endswith(".json"):
-                continue
-            a, b = os.path.join(src_av, name), os.path.join(dst_av, name)
-            with open(a, "rb") as f:
-                mine = f.read()
-            try:
-                with open(b, "rb") as f:
-                    same = f.read() == mine
-            except OSError:
-                same = False
-            if not same:
-                files.append(name)
-    return keys, files
-
-
-def export_to_cymple(own, target, directory=None):
-    """Write our changed keys and amplitude files into Cymple's settings. The INI is backed up
-    once, every replaced JSON next to itself. Returns (keys, files, ini backup path)."""
-    keys, files = export_plan(own, target, directory)
-    backup = None
-    for i, (section, values) in enumerate(keys.items()):
-        b = C.update_ini(target, section, values, backup=(i == 0))
-        backup = backup or b
-    src_av = os.path.join(directory or os.path.dirname(own), AVATAR_DIR)
-    dst_av = os.path.join(os.path.dirname(target), AVATAR_DIR)
-    for name in files:
-        dst = os.path.join(dst_av, name)
-        os.makedirs(dst_av, exist_ok=True)
-        if os.path.exists(dst):
-            shutil.copy2(dst, "%s.bak-%s" % (dst, _stamp()))
-        shutil.copy2(os.path.join(src_av, name), dst)
-    return keys, files, backup

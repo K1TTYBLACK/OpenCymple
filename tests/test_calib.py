@@ -1,4 +1,5 @@
 """Calibration flows (calib.py) on synthetic landmarks, plus the relations seen in a saved Cymple INI."""
+import os
 import math
 
 import pytest
@@ -157,7 +158,7 @@ def test_mesh_point_needs_eye_data():
     assert rep["skipped"] == "no reliable eye data" and cal.mesh.step == 0
 
 
-INI = C.find_ini()
+INI = os.environ.get("CYMPLE_INI")
 
 
 @pytest.mark.skipif(not INI, reason="no Cymple INI")

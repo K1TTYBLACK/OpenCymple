@@ -344,13 +344,13 @@ class Runtime:
     def create_own_amps(self):
         """Give the current avatar its own set, starting from the values in use."""
         with self.amp_lock:
-            if self.avatar_id and not self.writer.readonly:
+            if self.avatar_id:
                 self.flush()
                 S.save_amps(self.avatar_dir, self.avatar_id, dict(zip(C.AMP_KEYS, self.amp_values())))
 
     def delete_own_amps(self):
         with self.amp_lock:
-            if self.avatar_id and not self.writer.readonly:
+            if self.avatar_id:
                 S.delete_amps(self.avatar_dir, self.avatar_id)
                 self.amps_dirty = False
                 self.select_avatar(self.avatar_id)
@@ -380,7 +380,7 @@ class Runtime:
         """Write pending changes: INI keys, and the amplitude set in use."""
         self.writer.flush()
         with self.amp_lock:
-            if self.amps_dirty and not self.writer.readonly:
+            if self.amps_dirty:
                 S.save_amps(self.avatar_dir, self.avatar_id if self.amps_own() else None,
                             dict(zip(C.AMP_KEYS, self.amp_values())))
             self.amps_dirty = False

@@ -1,4 +1,4 @@
-"""Our settings copy: import once, write only our INI, export back with backups."""
+"""Our settings: all defaults on a fresh install, written only to our own directory."""
 import json
 import os
 
@@ -21,44 +21,48 @@ rotation = -180.000000
 
 
 @pytest.fixture
-def cymple(tmp_path, monkeypatch):
-    d = tmp_path / "Cymple"
-    (d / "avatarParaments").mkdir(parents=True)
-    (d / "iniFile.ini").write_text(INI)
-    (d / "avatarParaments" / "default.json").write_text(json.dumps({"OSC": {"Amp_JawOpenAmp": 1.5}}))
-    monkeypatch.setattr(C, "find_ini", lambda: str(d / "iniFile.ini"))
-    monkeypatch.setenv("OPENCYMPLE_LINUX_CONFIG", str(tmp_path / "cfg"))
-    return d
+def cfg(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENCYMPLE_CONFIG", str(tmp_path / "cfg"))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("CYMPLE_MODELS", raising=False)
+    return tmp_path / "cfg"
 
 
-def test_import_once_then_keep(cymple, tmp_path):
+def test_fresh_install_is_all_defaults(cfg):
     ini = S.resolve_ini()
-    assert ini == str(tmp_path / "cfg" / "iniFile.ini")
-    assert open(ini).read() == INI
-    assert (tmp_path / "cfg" / "avatarParaments" / "default.json").exists()
-    assert S.load_options()["imported_from"] == str(cymple / "iniFile.ini")
-    (cymple / "iniFile.ini").write_text(INI.replace("0.470000", "0.900000"))
-    assert C.read_ini(S.resolve_ini())["OSC"]["eyeGazeFilter"] == "0.470000"     # not re-imported
-    assert S.resolve_ini(own=False) == str(cymple / "iniFile.ini")
+    assert ini == str(cfg / "iniFile.ini") and open(ini).read() == ""
+    assert not (cfg / "avatarParaments").exists() and not (cfg / "opencymple.json").exists()
+    cal = C.load(ini)
+    assert cal.eye_gaze_filter == 0.8 and cal.mouth.filter == 0.25
+    assert all(e.roi_quad is None and e.mesh is None for e in cal.eyes)
+    assert cal.amps == {}
+    assert S.load_options()["osc"]["target"] == "127.0.0.1:9000"
+    assert S.OPTIONS_NAME == "opencymple.json"
 
 
-def test_forced_import_keeps_backups(cymple, tmp_path):
-    S.resolve_ini()                                              # our copy, imported once
-    own = tmp_path / "cfg"
-    (own / "avatarParaments" / "default.json").write_text(json.dumps({"OSC": {"Amp_JawOpenAmp": 2.0}}))
-    (cymple / "iniFile.ini").write_text(INI.replace("0.470000", "0.900000"))
-    S.import_from_cymple(str(cymple / "iniFile.ini"), force=True)
-    assert C.read_ini(S.resolve_ini())["OSC"]["eyeGazeFilter"] == "0.900000"
-    (ini_bak,) = [n for n in os.listdir(own) if n.startswith("iniFile.ini.bak-")]
-    assert C.read_ini(str(own / ini_bak))["OSC"]["eyeGazeFilter"] == "0.470000"
-    (av_bak,) = [n for n in os.listdir(own) if n.startswith("avatarParaments.bak-")]
-    with open(own / av_bak / "default.json") as f:
-        assert json.load(f)["OSC"]["Amp_JawOpenAmp"] == 2.0
-    with open(own / "avatarParaments" / "default.json") as f:
-        assert json.load(f)["OSC"]["Amp_JawOpenAmp"] == 1.5
+def test_models_dir_lookup(cfg, tmp_path, monkeypatch):
+    assert S.find_model_dir() is None
+    for name in ("a", "b", "c"):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "model0.bin").write_bytes(b"x")
+    opts = S.load_options()
+    opts["models_dir"] = str(tmp_path / "c")
+    S.save_options(opts)
+    assert S.find_model_dir() == str(tmp_path / "c")
+    monkeypatch.setenv("CYMPLE_MODELS", str(tmp_path / "b"))
+    assert S.find_model_dir() == str(tmp_path / "b")
+    assert S.find_model_dir(str(tmp_path / "a")) == str(tmp_path / "a")
+    assert S.find_model_dir(str(tmp_path)) == str(tmp_path / "b")        # no model0.bin there: next candidate
+    monkeypatch.delenv("CYMPLE_MODELS")
+    monkeypatch.setattr(S, "load_options", lambda: {})
+    bundled = tmp_path / "app" / "usr" / "share" / "opencymple" / "model"
+    bundled.mkdir(parents=True)
+    (bundled / "model0.bin").write_bytes(b"x")
+    monkeypatch.setenv("APPDIR", str(tmp_path / "app"))
+    assert S.find_model_dir() == str(bundled)
 
 
-def test_writer_changes_only_our_copy(cymple):
+def test_writer_writes_our_ini(cfg):
     ini = S.resolve_ini()
     w = S.IniWriter(ini)
     w.set("OSC", "eyeGazeFilter", 0.5)
@@ -68,21 +72,13 @@ def test_writer_changes_only_our_copy(cymple):
     osc = C.read_ini(ini)
     assert osc["OSC"]["eyeGazeFilter"] == "0.500000" and osc["OSC"]["lidSync"] == "true"
     assert osc["Cymple_Mouth"]["v1_auto_roi_calibration"] == "false"
-    assert open(cymple / "iniFile.ini").read() == INI
     assert C.load(ini).switches[9] is True
 
 
-def test_writer_refuses_cymples_ini(cymple):
-    w = S.IniWriter(str(cymple / "iniFile.ini"))
-    assert w.readonly
-    w.set("OSC", "eyeGazeFilter", 0.5)
-    assert not w.flush()
-    assert open(cymple / "iniFile.ini").read() == INI
-
-
-def test_amp_sets(cymple, tmp_path):
-    cfg = str(tmp_path / "cfg")
+def test_amp_sets(cfg, tmp_path):
+    cfg = str(cfg)
     S.resolve_ini()
+    S.save_amps(cfg, None, {"Amp_JawOpenAmp": 1.5})
     assert not S.has_own_amps(cfg, "avtr_x") and not S.has_own_amps(cfg, None)
     S.save_amps(cfg, "avtr_x", {"Amp_JawOpenAmp": 2.0})
     assert S.has_own_amps(cfg, "avtr_x")
@@ -93,35 +89,14 @@ def test_amp_sets(cymple, tmp_path):
         S.save_amps(cfg, "../evil", {})
 
 
-def test_export(cymple, tmp_path):
-    ini = S.resolve_ini()
-    cfg = str(tmp_path / "cfg")
-    assert S.export_plan(ini, str(cymple / "iniFile.ini")) == ({}, [])
-    w = S.IniWriter(ini)
-    w.set("OSC", "eyeGazeFilter", 0.6)
-    w.set("Cymple_Mouth", "rotation", 0.0)
-    w.set("ui", "themeMode", "light")                    # not a section we export
-    w.flush()
-    S.save_amps(cfg, None, {"Amp_JawOpenAmp": 3.0})
-    keys, files = S.export_plan(ini, str(cymple / "iniFile.ini"))
-    assert keys == {"OSC": {"eyeGazeFilter": "0.600000"}, "Cymple_Mouth": {"rotation": "0.000000"}}
-    assert files == ["default.json"]
-    _, _, backup = S.export_to_cymple(ini, str(cymple / "iniFile.ini"))
-    assert open(backup).read() == INI
-    theirs = C.read_ini(str(cymple / "iniFile.ini"))
-    assert theirs["OSC"]["eyeGazeFilter"] == "0.600000" and theirs["ui"]["themeMode"] == "dark"
-    assert json.load(open(cymple / "avatarParaments" / "default.json"))["OSC"]["Amp_JawOpenAmp"] == 3.0
-    assert any(n.startswith("default.json.bak-") for n in os.listdir(cymple / "avatarParaments"))
-    assert S.export_plan(ini, str(cymple / "iniFile.ini")) == ({}, [])
-
-
-def test_options_merge(cymple):
+def test_options_merge(cfg):
     opts = S.load_options()
     assert opts["osc"]["target"] == "127.0.0.1:9000"
     opts["osc"]["enabled"] = False
     S.save_options(opts)
     again = S.load_options()
     assert again["osc"] == {"enabled": False, "target": "127.0.0.1:9000", "avatar": "auto", "config_dir": ""}
+    assert (cfg / "opencymple.json").exists()
     assert again["afk"] == {"enabled": False}
 
 

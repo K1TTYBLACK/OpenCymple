@@ -16,23 +16,24 @@ from . import protocol as P
 log = logging.getLogger("opencymple")
 
 
-def _paths(args, own=True):
-    """(INI, model dir). own=True: our settings copy (imported from Cymple's INI on first use);
-    own=False: Cymple's own iniFile.ini (the oracle runs the Windows app with it)."""
+def _paths(args, oracle=False):
+    """(INI, model dir). Our settings INI by default (created on first use, all defaults);
+    oracle=True: Windows Cymple's own iniFile.ini, which must be given with --ini."""
     from . import settings as S
-    ini = S.resolve_ini(args.ini, own)
-    if not ini or not os.path.isfile(ini):
-        sys.exit("Cymple iniFile.ini not found; pass --ini or set CYMPLE_INI")
-    models = args.models or C.find_model_dir(ini) or C.find_model_dir(C.find_ini())
-    if not models or not os.path.isdir(models):
-        sys.exit("Cymple model directory not found; pass --models or set CYMPLE_MODELS")
+    if oracle and not args.ini:
+        sys.exit("pass --ini with Windows Cymple's iniFile.ini")
+    ini = S.resolve_ini(args.ini)
+    models = S.find_model_dir(args.models)
+    if not models:
+        sys.exit("Cymple model directory not found; pass --models, set CYMPLE_MODELS or put model0.bin ... "
+                 "in %s" % os.path.join(S.config_dir(), "model"))
     return ini, models
 
 
 def _add_common(p):
-    p.add_argument("--ini", help="settings INI in Cymple's format; default: ours in ~/.config/opencymple-linux "
-                                 "(oracle commands: Cymple's own iniFile.ini)")
-    p.add_argument("--models", help="directory with model0.bin ... model6.bin; default: next to the INI")
+    p.add_argument("--ini", help="settings INI in Cymple's format; default: ours in ~/.config/opencymple "
+                                 "(oracle commands: Windows Cymple's own iniFile.ini, required)")
+    p.add_argument("--models", help="directory with model0.bin ... model6.bin; default: $CYMPLE_MODELS, models_dir in opencymple.json, ~/.config/opencymple/model")
     p.add_argument("--provider", default="auto",
                    help="ONNX Runtime execution provider: auto/cpu, cuda, rocm, migraphx, openvino, ...")
     p.add_argument("--threads", type=int, default=1, help="intra-op threads per model (default 1)")
@@ -129,44 +130,10 @@ def cmd_gui(args):
 
 def cmd_config(args):
     from . import settings as S
-    from .oracle import cymple_pids
-
-    if args.action == "import":
-        src = args.source or C.find_ini()
-        if not src:
-            sys.exit("Cymple iniFile.ini not found; pass --from")
-        print("imported %s -> %s" % (src, S.import_from_cymple(src, force=args.force)))
-        return 0
     own = S.own_ini()
-    if args.action == "export":
-        target = args.to or C.find_ini()
-        if not os.path.isfile(own) or not target:
-            sys.exit("nothing to export: %s" % ("no Cymple INI found; pass --to" if os.path.isfile(own)
-                                                 else "%s does not exist yet" % own))
-        if args.dry_run:
-            keys, files = S.export_plan(own, target)
-        elif cymple_pids():
-            sys.exit("Windows Cymple is running; close it first (it writes its INI again when it exits)")
-        else:
-            keys, files, backup = S.export_to_cymple(own, target)
-        for section, values in keys.items():
-            for k, v in values.items():
-                print("[%s] %s = %s" % (section, k, v))
-        for name in files:
-            print("%s/%s" % (S.AVATAR_DIR, name))
-        if not keys and not files:
-            print("Cymple's settings already match ours")
-        elif args.dry_run:
-            print("(dry run: %s not changed)" % target)
-        else:
-            print("written to %s%s; close Windows Cymple first next time, it saves its INI on exit"
-                  % (target, " (backup %s)" % backup if backup else ""))
-        return 0
-    opts = S.load_options()
     print("config directory  %s" % S.config_dir())
-    print("settings INI      %s%s" % (own, "" if os.path.isfile(own) else " (not imported yet)"))
-    print("imported from     %s" % opts.get("imported_from", "-"))
-    print("Cymple's INI      %s" % (C.find_ini() or "not found"))
+    print("settings INI      %s%s" % (own, "" if os.path.isfile(own) else " (not created yet: defaults)"))
+    print("model directory   %s" % (S.find_model_dir() or "not found"))
     return 0
 
 
@@ -277,7 +244,7 @@ def cmd_record(args):
 def cmd_oracle_record(args):
     from .oracle import record
 
-    ini, _ = _paths(args, own=False)
+    ini, _ = _paths(args, oracle=True)
     suffix = ".oracle.jsonl" if args.mode == "vrcft" else ".oracle-%s.jsonl" % args.mode
     out = args.out or os.path.splitext(args.capture)[0] + suffix
     n = record(args.capture, out, ini, mode=args.mode, settle_s=args.settle, cymple_log=out + ".cymple.log")
@@ -312,7 +279,7 @@ def cmd_oracle_compare(args):
                 json.dump(stats, f, indent=1)
         return 0
 
-    ini, model_dir = _paths(args, own=False)
+    ini, model_dir = _paths(args, oracle=True)
     calib = C.load(ini)
     models = load_models(model_dir, ["eye_landmark", "mouth_roi", "mouth_v1"], args.provider, args.threads)
     pipeline = Pipeline(models, calib)
@@ -334,10 +301,8 @@ def cmd_oracle_compare(args):
 
 def cmd_selftest(args):
     from .gaze import selftest
-    ini = args.ini or C.find_ini()
-    if not ini:
-        sys.exit("Cymple iniFile.ini not found; pass --ini")
-    return 0 if selftest(ini) else 1
+    from . import settings as S
+    return 0 if selftest(S.resolve_ini(args.ini)) else 1
 
 
 def main(argv=None):
@@ -380,12 +345,7 @@ def main(argv=None):
                    help="start the 13-point gaze calibration in the headset (OpenXR overlay) right away")
     p.set_defaults(func=cmd_gui)
 
-    p = sub.add_parser("config", help="our settings copy: show, import from Cymple, export back to Cymple")
-    p.add_argument("action", nargs="?", choices=("show", "import", "export"), default="show")
-    p.add_argument("--from", dest="source", metavar="INI", help="import: Cymple INI to copy (default: auto-detect)")
-    p.add_argument("--force", action="store_true", help="import: replace our copy (a backup is kept)")
-    p.add_argument("--to", metavar="INI", help="export: Cymple INI to update (default: auto-detect)")
-    p.add_argument("--dry-run", action="store_true", help="export: only list what would change")
+    p = sub.add_parser("config", help="where our settings and the models are")
     p.set_defaults(func=cmd_config)
 
     p = sub.add_parser("models", help="load every model from memory and print its I/O")
@@ -400,7 +360,7 @@ def main(argv=None):
     p.add_argument("--frames", type=int, default=50, help="frames to wait for per eye before sampling the last one")
     p.add_argument("--timeout", type=float, default=15.0)
     p.add_argument("--image", help="use this raw camera frame instead of the stream (needs --eye)")
-    p.add_argument("--write-ini", action="store_true", help="store the quads in Cymple's INI (backup first)")
+    p.add_argument("--write-ini", action="store_true", help="store the quads in our settings INI (backup first)")
     p.set_defaults(func=cmd_calibrate_roi)
 
     p = sub.add_parser("record", help="guided recording of a labelled test corpus (wear the headset)")
@@ -432,7 +392,7 @@ def main(argv=None):
     p.add_argument("--json", metavar="FILE", help="also write the statistics as JSON")
     p.set_defaults(func=cmd_oracle_compare)
 
-    p = sub.add_parser("selftest", help="check the gaze mesh math against the saved calibration")
+    p = sub.add_parser("selftest", help="check the gaze mesh math against the saved calibration (ours, or --ini)")
     p.add_argument("--ini")
     p.set_defaults(func=cmd_selftest)
 

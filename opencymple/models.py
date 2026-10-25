@@ -7,7 +7,7 @@ Scheme (cympleface.dll sub_18004d7f0 / sub_180049900 / sub_180049d50):
   plain = ciphertext XOR little-endian xorshift128+ stream (last partial word: low bytes)
 
 Decrypted bytes only ever live in memory and are handed to ONNX Runtime directly, as the
-original does. The weights are Cymple's; do not write or share decrypted copies.
+original does.
 """
 import logging
 import os

@@ -103,6 +103,28 @@ def _command(args):
     return _print(instance.send(req, timeout=timeout) or {"ok": False, "message": "OpenCymple went away"})
 
 
+def _ask_models():
+    """Ask for the models folder once and remember it
+    (models_dir in opencymple.json). Returns the folder, or None when the user gives up."""
+    from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
+    from . import settings as S
+    os.environ["QT_QPA_PLATFORMTHEME"] = "xdgdesktopportal"      # same file dialogs as the app itself
+    app = QApplication.instance() or QApplication(sys.argv[:1])
+    QMessageBox.information(None, "OpenCymple", "OpenCymple needs Cymple's model files "
+                            "(model0.bin ... model6.bin, the model folder of a Cymple installation).\n\n"
+                            "Choose that folder.")
+    while True:
+        path = QFileDialog.getExistingDirectory(None, "Folder with model0.bin ... model6.bin")
+        if not path:
+            return None
+        if S.find_model_dir(path):
+            opts = S.load_options()
+            opts["models_dir"] = path
+            S.save_options(opts)
+            return path
+        QMessageBox.warning(None, "OpenCymple", "%s has no model0.bin." % path)
+
+
 def main(argv=None):
     parser = _parser()
     args = parser.parse_args(argv)
@@ -138,6 +160,9 @@ def main(argv=None):
     from .protocol import INGEST_PORT
     args.ini = args.models = None
     args.provider, args.threads, args.osc_listen = "auto", 1, 9001
+    from . import settings as S
+    if not S.find_model_dir() and not _ask_models():
+        return 1
     ini, model_dir = _paths(args)
     source = dict(replay=args.replay, speed=1.0, loop=args.loop, bind="0.0.0.0", port=INGEST_PORT,
                   beacon=True, beacon_to=[], record=None)

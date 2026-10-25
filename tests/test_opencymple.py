@@ -17,8 +17,8 @@ from opencymple import opencymple as O
 
 HERE = os.path.dirname(__file__)
 CAPTURE = os.path.join(HERE, "..", "captures", "live-test-1.cap")
-INI = C.find_ini()
-MODELS = C.find_model_dir(INI) if INI else None
+INI = os.environ.get("CYMPLE_INI")                   # a calibrated Windows Cymple INI, for the install tests
+MODELS = os.environ.get("CYMPLE_MODELS")
 needs_install = pytest.mark.skipif(not (INI and MODELS and os.path.exists(CAPTURE)),
                                    reason="needs the Cymple install and captures/live-test-1.cap")
 
@@ -28,7 +28,7 @@ def dirs(tmp_path, monkeypatch):
     for var in ("XDG_RUNTIME_DIR", "XDG_DATA_HOME", "XDG_STATE_HOME"):
         (tmp_path / var).mkdir()
         monkeypatch.setenv(var, str(tmp_path / var))
-    monkeypatch.setenv("OPENCYMPLE_LINUX_CONFIG", str(tmp_path / "cfg"))
+    monkeypatch.setenv("OPENCYMPLE_CONFIG", str(tmp_path / "cfg"))
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     return tmp_path
 
@@ -97,9 +97,11 @@ def test_shell_commands(dirs, monkeypatch):
     from opencymple.ui import shell as SH
     from opencymple.ui import xr_overlay
     app = QApplication.instance() or QApplication([])
-    cym = dirs / "Cymple"
-    shutil.copytree(os.path.dirname(INI), cym, ignore=shutil.ignore_patterns("logs", "dataset"))
-    monkeypatch.setattr(C, "find_ini", lambda: str(cym / "iniFile.ini"))
+    cfg = dirs / "cfg"
+    cfg.mkdir()
+    shutil.copy(INI, cfg / "iniFile.ini")
+    if os.path.isdir(os.path.join(os.path.dirname(INI), "avatarParaments")):
+        shutil.copytree(os.path.join(os.path.dirname(INI), "avatarParaments"), cfg / "avatarParaments")
     monkeypatch.setattr(xr_overlay, "available", lambda: "no headset in tests")
     monkeypatch.setattr(QApplication, "quit", staticmethod(lambda: None))
     rt = Runtime(S.resolve_ini(), MODELS)

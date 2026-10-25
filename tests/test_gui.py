@@ -1,7 +1,6 @@
 """The window and Runtime on a replayed capture: every change reaches the pipeline and our INI,
 Cymple's files stay as they were. Needs the local install, the capture and PySide6."""
 import argparse
-import hashlib
 import json
 import logging
 import os
@@ -20,32 +19,27 @@ from opencymple.gaze import gaze_filter_params                # noqa: E402
 
 HERE = os.path.dirname(__file__)
 CAPTURE = os.path.join(HERE, "..", "captures", "live-test-1.cap")
-INI = C.find_ini()
-MODELS = C.find_model_dir(INI) if INI else None
+INI = os.environ.get("CYMPLE_INI")                   # a calibrated Windows Cymple INI, for the install tests
+MODELS = os.environ.get("CYMPLE_MODELS")
 pytestmark = pytest.mark.skipif(not (INI and MODELS and os.path.exists(CAPTURE)),
                                 reason="needs the Cymple install and captures/live-test-1.cap")
-
-
-def _md5(path):
-    with open(path, "rb") as f:
-        return hashlib.md5(f.read()).hexdigest()
 
 
 @pytest.fixture
 def runtime(tmp_path, monkeypatch):
     """Runtime on our settings copy, imported from a copy of the real Cymple INI."""
     from opencymple.runtime import Runtime
-    cym = tmp_path / "Cymple"
-    shutil.copytree(os.path.dirname(INI), cym, ignore=shutil.ignore_patterns("logs", "dataset"))
-    monkeypatch.setattr(C, "find_ini", lambda: str(cym / "iniFile.ini"))
-    monkeypatch.setenv("OPENCYMPLE_LINUX_CONFIG", str(tmp_path / "cfg"))
-    before = _md5(cym / "iniFile.ini")
+    cfg = tmp_path / "cfg"
+    cfg.mkdir()
+    shutil.copy(INI, cfg / "iniFile.ini")
+    if os.path.isdir(os.path.join(os.path.dirname(INI), "avatarParaments")):
+        shutil.copytree(os.path.join(os.path.dirname(INI), "avatarParaments"), cfg / "avatarParaments")
+    monkeypatch.setenv("OPENCYMPLE_CONFIG", str(tmp_path / "cfg"))
     rt = Runtime(S.resolve_ini(), MODELS)
     rt.start()
     rt.start_source(replay=CAPTURE, loop=True)
     yield rt
     rt.stop()
-    assert _md5(cym / "iniFile.ini") == before
 
 
 def _pump(app, seconds):
