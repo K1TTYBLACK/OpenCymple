@@ -2,7 +2,7 @@
 Export Logs writes."""
 import logging
 
-from opencymple_linux import logs
+from opencymple import logs
 
 
 def _logger(name, buf):

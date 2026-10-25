@@ -1,7 +1,7 @@
 import json
 import threading
 
-from opencymple_linux.record import SCRIPT, Beeper, run_script
+from opencymple.record import SCRIPT, Beeper, run_script
 
 
 def test_script_labels_unique():

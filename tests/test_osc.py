@@ -1,6 +1,6 @@
 import struct
 
-from opencymple_linux.outputs.osc import BUNDLE_HEAD, bundles, message, parse
+from opencymple.outputs.osc import BUNDLE_HEAD, bundles, message, parse
 
 
 def test_message_encoding_matches_osc_spec():

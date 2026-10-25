@@ -14,9 +14,9 @@ import pytest
 pytest.importorskip("PySide6")
 os.environ["QT_QPA_PLATFORM"] = "offscreen"          # never on the real desktop, whatever the session sets
 
-from opencymple_linux import calibration as C                       # noqa: E402
-from opencymple_linux import settings as S                          # noqa: E402
-from opencymple_linux.gaze import gaze_filter_params                # noqa: E402
+from opencymple import calibration as C                       # noqa: E402
+from opencymple import settings as S                          # noqa: E402
+from opencymple.gaze import gaze_filter_params                # noqa: E402
 
 HERE = os.path.dirname(__file__)
 CAPTURE = os.path.join(HERE, "..", "captures", "live-test-1.cap")
@@ -34,7 +34,7 @@ def _md5(path):
 @pytest.fixture
 def runtime(tmp_path, monkeypatch):
     """Runtime on our settings copy, imported from a copy of the real Cymple INI."""
-    from opencymple_linux.runtime import Runtime
+    from opencymple.runtime import Runtime
     cym = tmp_path / "Cymple"
     shutil.copytree(os.path.dirname(INI), cym, ignore=shutil.ignore_patterns("logs", "dataset"))
     monkeypatch.setattr(C, "find_ini", lambda: str(cym / "iniFile.ini"))
@@ -57,7 +57,7 @@ def _pump(app, seconds):
 
 def test_window_changes_apply_and_save(runtime):
     from PySide6.QtWidgets import QApplication
-    from opencymple_linux.ui.app import MainWindow
+    from opencymple.ui.app import MainWindow
     app = QApplication.instance() or QApplication([])
     rt = runtime
     win = MainWindow(rt, argparse.Namespace(no_osc=True, osc_listen=0), S.load_options())
@@ -101,6 +101,18 @@ def test_window_changes_apply_and_save(runtime):
         win._calibrate_roi((0, 1))
         assert rt.calib.eyes[0].roi_quad is not None and rt.pipeline.workers[0].tracker.roi_quad is not None
 
+        out = os.path.join(os.path.dirname(rt.ini), "export.json")
+        rt.flush()
+        S.export_bundle(out, rt.ini)
+        win.eye_sliders["eye_gaze_filter"].spin.setValue(0.3)
+        win.amp_sliders[14].spin.setValue(0.5)
+        rt.flush()
+        S.import_bundle(out)
+        rt.reload()
+        win._sync_from_runtime()
+        assert rt.calib.eye_gaze_filter == 1.0 and win.eye_sliders["eye_gaze_filter"].spin.value() == 1.0
+        assert win.amp_sliders[14].spin.value() == 2.0 and rt.pipeline.mouth_core.slots[14] == 2.0
+
         rt.flush()
         ours = C.read_ini(rt.ini)
         assert ours["OSC"]["eyeGazeFilter"] == "1.000000"
@@ -113,7 +125,7 @@ def test_window_changes_apply_and_save(runtime):
 
 
 def test_osc_output_and_avatar_amplitudes(runtime):
-    from opencymple_linux.outputs.avatar import AvatarInfo
+    from opencymple.outputs.avatar import AvatarInfo
     rt = runtime
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("127.0.0.1", 0))
@@ -150,8 +162,8 @@ def test_osc_output_and_avatar_amplitudes(runtime):
 
 def test_calibration_flows_on_replay(runtime):
     from PySide6.QtWidgets import QApplication
-    from opencymple_linux import calib as K
-    from opencymple_linux.ui.calibration import MeshTargetWindow
+    from opencymple import calib as K
+    from opencymple.ui.calibration import MeshTargetWindow
     app = QApplication.instance() or QApplication([])
     rt = runtime
     _pump(app, 1.5)
@@ -193,7 +205,7 @@ def test_headset_flow_on_replay(runtime):
     """The overlay's steps without OpenXR: geometry from the sticks, captures from the trigger, the
     mesh saved with that geometry."""
     from PySide6.QtWidgets import QApplication
-    from opencymple_linux.ui import xr_overlay as X
+    from opencymple.ui import xr_overlay as X
     app = QApplication.instance() or QApplication([])
     rt = runtime
     _pump(app, 1.5)
@@ -231,9 +243,9 @@ def test_headset_flow_on_replay(runtime):
 
 def test_window_decks_previews_and_log_export(runtime, tmp_path, monkeypatch):
     from PySide6.QtWidgets import QApplication, QPushButton, QToolButton
-    from opencymple_linux import logs
-    from opencymple_linux.ui import app as ui
-    from opencymple_linux.ui.app import MainWindow
+    from opencymple import logs
+    from opencymple.ui import app as ui
+    from opencymple.ui.app import MainWindow
     app = QApplication.instance() or QApplication([])
     win = MainWindow(runtime, argparse.Namespace(no_osc=True, osc_listen=0), S.load_options())
     try:
@@ -250,7 +262,7 @@ def test_window_decks_previews_and_log_export(runtime, tmp_path, monkeypatch):
         win._place_previews(True)
         assert win.tabs.indexOf(win.previews_area) == win.tabs.indexOf(win.output_page) - 1
         win._place_previews(False)
-        assert {"Import From", "Export To", "Export Logs"} <= {b.text() for b in win.findChildren(QPushButton)}
+        assert {"Import", "Export", "Export Logs"} <= {b.text() for b in win.findChildren(QPushButton)}
 
         logs.attach()
         try:

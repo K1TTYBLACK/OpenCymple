@@ -3,10 +3,10 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from opencymple_linux import afk as A
-from opencymple_linux.calibration import Calibration
-from opencymple_linux.params import FIELDS
-from opencymple_linux.pipeline import Pipeline
+from opencymple import afk as A
+from opencymple.calibration import Calibration
+from opencymple.params import FIELDS
+from opencymple.pipeline import Pipeline
 
 LIT, DARK = np.full((96, 96), 130, np.uint8), np.full((96, 96), 12, np.uint8)
 

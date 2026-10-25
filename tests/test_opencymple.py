@@ -11,9 +11,9 @@ import time
 
 import pytest
 
-from opencymple_linux import calibration as C
-from opencymple_linux import desktop, instance
-from opencymple_linux import opencymple as O
+from opencymple import calibration as C
+from opencymple import desktop, instance
+from opencymple import opencymple as O
 
 HERE = os.path.dirname(__file__)
 CAPTURE = os.path.join(HERE, "..", "captures", "live-test-1.cap")
@@ -92,10 +92,10 @@ def _ask(app, request, timeout=10.0):
 def test_shell_commands(dirs, monkeypatch):
     pytest.importorskip("PySide6")
     from PySide6.QtWidgets import QApplication
-    from opencymple_linux import settings as S
-    from opencymple_linux.runtime import Runtime
-    from opencymple_linux.ui import shell as SH
-    from opencymple_linux.ui import xr_overlay
+    from opencymple import settings as S
+    from opencymple.runtime import Runtime
+    from opencymple.ui import shell as SH
+    from opencymple.ui import xr_overlay
     app = QApplication.instance() or QApplication([])
     cym = dirs / "Cymple"
     shutil.copytree(os.path.dirname(INI), cym, ignore=shutil.ignore_patterns("logs", "dataset"))
@@ -140,7 +140,7 @@ def test_shell_commands(dirs, monkeypatch):
 def test_command_starts_a_background_app(dirs):
     """`opencymple recenter` with nothing running: a headless app starts, recenters and stays."""
     pytest.importorskip("PySide6")
-    py = [sys.executable, "-m", "opencymple_linux.opencymple"]
+    py = [sys.executable, "-m", "opencymple.opencymple"]
     env = dict(os.environ)
     try:
         r = subprocess.run(py + ["--no-osc", "--replay", CAPTURE, "--loop", "recenter"], env=env,

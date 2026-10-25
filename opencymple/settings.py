@@ -22,7 +22,7 @@ INI_NAME = "iniFile.ini"
 AVATAR_DIR = "avatarParaments"
 OPTIONS_NAME = "opencymple-linux.json"
 EXPORT_SECTIONS = ("OSC", "Cymple_Mouth", "CympleFace_LeftEye", "CympleFace_RightEye")
-DEFAULT_OPTIONS = {"osc": {"enabled": True, "target": "127.0.0.1:9000", "avatar": "auto"},
+DEFAULT_OPTIONS = {"osc": {"enabled": True, "target": "127.0.0.1:9000", "avatar": "auto", "config_dir": ""},
                    "afk": {"enabled": False}}
 
 
@@ -187,6 +187,88 @@ def delete_amps(directory, avatar_id):
             os.remove(_avatar_file(directory, avatar_id))
         except FileNotFoundError:
             pass
+
+
+# ---- export / import of our settings as one file -----------------------------------------------
+
+BUNDLE_FORMAT = "opencymple-config"
+
+
+# section names in the exported file (the INI keeps its own); keys naming the original app are left out
+SECTION_NAMES = {"Cymple_Mouth": "Mouth", "CympleFace_LeftEye": "LeftEye", "CympleFace_RightEye": "RightEye"}
+INI_SECTIONS = {v: k for k, v in SECTION_NAMES.items()}
+
+
+def _typed(v):
+    """INI text -> bool/int/float when that converts back to the same text, else the text."""
+    if v in ("true", "false"):
+        return v == "true"
+    for conv in (int, float):
+        try:
+            if str(conv(v)) == v:
+                return conv(v)
+        except ValueError:
+            pass
+    return v
+
+
+def _ini_text(v):
+    return ("true" if v else "false") if isinstance(v, bool) else str(v)
+
+
+def export_bundle(path, own=None, directory=None):
+    """Save our settings and amplitude sets as one JSON file at `path`."""
+    own = own or own_ini(directory)
+    av_dir = os.path.join(directory or os.path.dirname(own), AVATAR_DIR)
+    settings = {SECTION_NAMES.get(sec, sec): {k: _typed(v) for k, v in vals.items() if "cymple" not in k.lower()}
+                for sec, vals in C.read_ini(own).items() if sec}
+    sets = {}
+    if os.path.isdir(av_dir):
+        for name in sorted(os.listdir(av_dir)):
+            if name.endswith(".json"):
+                try:
+                    with open(os.path.join(av_dir, name), encoding="utf-8") as f:
+                        sets[name[:-5]] = json.load(f)
+                except (OSError, ValueError):
+                    log.warning("skipping unreadable amplitude set %s", name)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"format": BUNDLE_FORMAT, "version": 2, "settings": settings, AVATAR_DIR: sets}, f, indent=1)
+
+
+def import_bundle(path, directory=None):
+    """Apply a file made by export_bundle (a bare iniFile.ini also works) to our INI and amplitude
+    sets, keeping the INI's formatting. Replaced files are kept as .bak-<time> copies."""
+    d = directory or config_dir()
+    try:
+        with open(path, encoding="utf-8") as f:
+            bundle = json.load(f)
+        if not isinstance(bundle, dict) or bundle.get("format") != BUNDLE_FORMAT:
+            raise ValueError("not an OpenCymple config file")
+    except json.JSONDecodeError:
+        bundle = {"settings": C.read_ini(path)}
+    os.makedirs(d, exist_ok=True)
+    stamp = _stamp()
+    dst = own_ini(d)
+    if os.path.exists(dst):
+        shutil.copy2(dst, "%s.bak-%s" % (dst, stamp))
+    else:
+        open(dst, "w").close()
+    for section, values in bundle.get("settings", {}).items():
+        section = INI_SECTIONS.get(section, section)
+        if section and isinstance(values, dict):
+            C.update_ini(dst, section, {k: _ini_text(v) for k, v in values.items()}, backup=False)
+    av_dir = os.path.join(d, AVATAR_DIR)
+    for name, content in bundle.get(AVATAR_DIR, {}).items():
+        if os.path.basename(name) != name or not isinstance(content, dict):
+            continue
+        os.makedirs(av_dir, exist_ok=True)
+        target = os.path.join(av_dir, name + ".json")
+        if os.path.exists(target):
+            shutil.copy2(target, "%s.bak-%s" % (target, stamp))
+        with open(target, "w", encoding="utf-8") as f:
+            json.dump(content, f, indent=1)
+    log.info("imported settings from %s into %s", path, d)
+    return dst
 
 
 # ---- export back to the Windows app ------------------------------------------------------------

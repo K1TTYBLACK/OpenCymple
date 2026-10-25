@@ -38,10 +38,13 @@ def installed():
 
 def executable():
     """The command that starts OpenCymple: the console script next to this Python, else -m."""
+    appimage = os.environ.get("APPIMAGE")                # running from an AppImage: that file is the command
+    if appimage and os.path.isfile(appimage):
+        return [appimage]
     script = os.path.join(os.path.dirname(sys.executable), APP_ID)
     if os.path.isfile(script) and os.access(script, os.X_OK):
         return [script]
-    return [sys.executable, "-m", "opencymple_linux.opencymple"]
+    return [sys.executable, "-m", "opencymple.opencymple"]
 
 
 def _quote(arg):
@@ -73,8 +76,8 @@ def entry_text(cmd=None):
     return "\n".join(lines)
 
 
-def install():
-    """Write the entry and the icon and link the command; returns the paths written."""
+def install_entry():
+    """Write the entry and the icon; returns the paths written."""
     entry, icon = entry_path(), installed_icon_path()
     for path in (entry, icon):
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -82,30 +85,59 @@ def install():
     with open(entry, "w", encoding="utf-8") as f:
         f.write(entry_text())
     _refresh_icon_cache()
-    written = [entry, icon]
-    script, link = executable()[0], link_path()
-    if os.path.basename(script) == APP_ID:               # the console script (not `python -m`)
-        if os.path.islink(link):
-            os.remove(link)
-        if not os.path.exists(link):                     # never replace a real file of someone else's
-            os.makedirs(os.path.dirname(link), exist_ok=True)
-            os.symlink(script, link)
-            written.append(link)
-    return written
+    return [entry, icon]
 
 
-def uninstall():
+def uninstall_entry():
     removed = []
     for path in (entry_path(), installed_icon_path()):
         if os.path.exists(path):
             os.remove(path)
             removed.append(path)
-    link = link_path()
-    if os.path.islink(link) and os.path.basename(os.readlink(link)) == APP_ID:
-        os.remove(link)
-        removed.append(link)
     _refresh_icon_cache()
     return removed
+
+
+def linked():
+    if not os.path.islink(link_path()):
+        return False
+    target = os.path.basename(os.readlink(link_path()))
+    return target == APP_ID or target.lower().endswith(".appimage")
+
+
+def link_command():
+    """Link `opencymple` into ~/.local/bin; returns the paths written."""
+    script, link = executable()[0], link_path()
+    if os.path.basename(script) != APP_ID and not script.lower().endswith(".appimage"):   # `python -m`: nothing to link
+        return []
+    if os.path.islink(link):
+        os.remove(link)
+    if os.path.exists(link):                             # never replace a real file of someone else's
+        return []
+    os.makedirs(os.path.dirname(link), exist_ok=True)
+    os.symlink(script, link)
+    return [link]
+
+
+def unlink_command():
+    link = link_path()
+    if linked():
+        os.remove(link)
+        return [link]
+    return []
+
+
+def on_path():
+    return os.path.dirname(link_path()) in os.environ.get("PATH", "").split(os.pathsep)
+
+
+def install():
+    """Entry, icon and command link; returns the paths written."""
+    return install_entry() + link_command()
+
+
+def uninstall():
+    return uninstall_entry() + unlink_command()
 
 
 def _refresh_icon_cache():

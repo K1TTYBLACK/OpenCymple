@@ -64,7 +64,7 @@ class Shell(QObject):
         if not o["enabled"] or self.args.no_osc:
             return
         try:
-            self.rt.start_osc(o["target"], o["avatar"], self.args.osc_listen)
+            self.rt.start_osc(o["target"], o["avatar"], self.args.osc_listen, o["config_dir"])
         except (OSError, ValueError) as e:
             log.error("cannot start the VRChat output: %s", e)
 
@@ -190,6 +190,8 @@ def run_app(args, ini, model_dir, source_kwargs):
     """`opencymple`: window (unless --headless) + tray until Quit."""
     from .app import _apply_theme
     os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.wayland.textinput=false")
+    # file dialogs go through xdg-desktop-portal: the desktop's own file manager, not Qt's built-in one
+    os.environ["QT_QPA_PLATFORMTHEME"] = "xdgdesktopportal"
     app = QApplication.instance() or QApplication(sys.argv[:1])
     app.setApplicationName(APP_NAME)
     if installed():                              # Wayland app id = desktop entry: icon and name in docks

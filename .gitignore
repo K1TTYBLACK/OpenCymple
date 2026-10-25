@@ -14,3 +14,4 @@ captures/
 # Local settings and secrets
 .env
 *.ini
+README_AGENT.md

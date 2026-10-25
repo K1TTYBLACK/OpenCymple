@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "opencymple-linux"
 version = "0.1.0"
-description = "Native Linux runtime for Cymple eye/face trackers: UDP camera ingest and ONNX inference"
+description = "Native Linux alternative for Project Cymple"
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.24", "opencv-python-headless>=4.8", "onnxruntime>=1.17", "zeroconf>=0.130"]
 
@@ -15,14 +15,14 @@ gui = ["PySide6-Essentials>=6.8"]
 xr = ["pyopenxr>=1.1.4", "PyOpenGL>=3.1"]          # headset calibration overlay (with gui)
 
 [project.scripts]
-opencymple-linux = "opencymple_linux.cli:main"
-opencymple = "opencymple_linux.opencymple:main"
+opencymple-linux = "opencymple.cli:main"
+opencymple = "opencymple.opencymple:main"
 
 [tool.setuptools]
-packages = ["opencymple_linux", "opencymple_linux.outputs", "opencymple_linux.ui"]
+packages = ["opencymple", "opencymple.outputs", "opencymple.ui"]
 
 [tool.setuptools.package-data]
-opencymple_linux = ["resources/*.svg", "resources/*.qss", "resources/fonts/*", "resources/icons/*"]
+opencymple = ["resources/*.svg", "resources/*.qss", "resources/fonts/*", "resources/icons/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

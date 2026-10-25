@@ -13,7 +13,7 @@ from . import calibration as C
 from . import logs
 from . import protocol as P
 
-log = logging.getLogger("opencymple_linux")
+log = logging.getLogger("opencymple")
 
 
 def _paths(args, own=True):
@@ -90,7 +90,7 @@ def cmd_run(args):
     ini, model_dir = _paths(args)
     rt = Runtime(ini, model_dir, args.provider, args.threads, mouth=not args.no_mouth)
     if args.osc:
-        rt.start_osc(args.osc_target, args.osc_avatar, args.osc_listen)
+        rt.start_osc(args.osc_target, args.osc_avatar, args.osc_listen, args.osc_config_dir)
     rt.start()
     stop = threading.Event()
     _install_sigint(stop)
@@ -359,6 +359,9 @@ def main(argv=None):
                    help="where the avatar's parameter list comes from: auto = VRChat OSCQuery, else its OSC "
                         "config file on /avatar/change; none = default addresses + VRChat native eye tracking; "
                         "FILE = an avatar OSC config JSON")
+    p.add_argument("--osc-config-dir", default="", metavar="DIR",
+                   help="VRChat's OSC config folder (the one holding usr_*/Avatars); default: autodetect "
+                        "in the Steam Proton prefix")
     p.add_argument("--osc-listen", type=int, default=9001, metavar="PORT",
                    help="VRChat OSC output port to watch for /avatar/change (0 = off)")
     p.set_defaults(func=cmd_run)

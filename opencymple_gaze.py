@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Compatibility entry point: the gaze math now lives in opencymple_linux/gaze.py.
+"""Compatibility entry point: the gaze math now lives in opencymple/gaze.py.
 
 Usage:  python3 opencymple_gaze.py --selftest [path/to/iniFile.ini]
 """
 import sys
 
-from opencymple_linux.calibration import find_ini
-from opencymple_linux.gaze import *  # noqa: F401,F403
-from opencymple_linux.gaze import selftest
+from opencymple.calibration import find_ini
+from opencymple.gaze import *  # noqa: F401,F403
+from opencymple.gaze import selftest
 
 if __name__ == "__main__":
     if len(sys.argv) >= 2 and sys.argv[1] == "--selftest":

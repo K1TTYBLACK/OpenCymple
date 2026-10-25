@@ -3,8 +3,8 @@ import struct
 
 import pytest
 
-from opencymple_linux import protocol as P
-from opencymple_linux.receiver import Ingest
+from opencymple import protocol as P
+from opencymple.receiver import Ingest
 
 
 def test_parse_v5_fragment():

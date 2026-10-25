@@ -103,7 +103,7 @@ class Runtime:
         self.flush()
 
     # ---- VRChat OSC (Mode A) -------------------------------------------------------------
-    def start_osc(self, target="127.0.0.1:9000", avatar="auto", listen_port=9001):
+    def start_osc(self, target="127.0.0.1:9000", avatar="auto", listen_port=9001, config_dir=""):
         from .outputs.avatar import AvatarWatcher, FixedAvatar, read_avatar_config
         from .outputs.osc import OscSender
         from .outputs.vrchat import VRChatOutput
@@ -112,7 +112,8 @@ class Runtime:
         host, _, port = target.rpartition(":")
         self.sender = OscSender(host or "127.0.0.1", int(port))
         if avatar == "auto":
-            self.watcher = AvatarWatcher(oscquery=True, listen_port=listen_port)
+            self.watcher = AvatarWatcher(oscquery=True, listen_port=listen_port,
+                                         config_dirs=[os.path.expanduser(config_dir)] if config_dir else None)
             self.watcher.start()
             avatars = self.watcher
         elif avatar == "none":
@@ -353,6 +354,27 @@ class Runtime:
                 S.delete_amps(self.avatar_dir, self.avatar_id)
                 self.amps_dirty = False
                 self.select_avatar(self.avatar_id)
+
+    def reload(self):
+        """Re-read the INI and amplitude sets into the running calibration (after an import)."""
+        new = C.load(self.ini)
+        with self.amp_lock:
+            c = self.calib
+            for k, v in vars(new).items():
+                if k == "mouth":
+                    vars(c.mouth).update(vars(v))
+                elif k == "eyes":
+                    for old, fresh in zip(c.eyes, v):
+                        vars(old).update(vars(fresh))
+                elif k == "switches":
+                    c.switches.clear()
+                    c.switches.update(v)
+                elif k != "amps":
+                    setattr(c, k, v)
+            for eye, e in enumerate(c.eyes):
+                if e.roi_quad is not None:
+                    self.pipeline.set_eye_roi(eye, e.roi_quad)
+            self.select_avatar(self.avatar_id)             # amplitudes of the current avatar, pipeline.reconfigure()
 
     def flush(self):
         """Write pending changes: INI keys, and the amplitude set in use."""

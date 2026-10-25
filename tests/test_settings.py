@@ -4,8 +4,8 @@ import os
 
 import pytest
 
-from opencymple_linux import calibration as C
-from opencymple_linux import settings as S
+from opencymple import calibration as C
+from opencymple import settings as S
 
 INI = """[ui]
 themeMode = dark
@@ -121,7 +121,7 @@ def test_options_merge(cymple):
     opts["osc"]["enabled"] = False
     S.save_options(opts)
     again = S.load_options()
-    assert again["osc"] == {"enabled": False, "target": "127.0.0.1:9000", "avatar": "auto"}
+    assert again["osc"] == {"enabled": False, "target": "127.0.0.1:9000", "avatar": "auto", "config_dir": ""}
     assert again["afk"] == {"enabled": False}
 
 
@@ -132,3 +132,22 @@ def test_update_ini_keeps_crlf(tmp_path):
     data = p.read_bytes()
     assert data.count(b"\r\n") == data.count(b"\n") and b"eyeGazeFilter = 0.600000\r\n" in data
     assert C.read_ini(str(p))["OSC"]["newKey"] == "1"
+
+
+def test_bundle_roundtrip(tmp_path):
+    a, b = tmp_path / "a", tmp_path / "b"
+    (a / "avatarParaments").mkdir(parents=True)
+    (a / "iniFile.ini").write_bytes(INI.replace("\n", "\r\n").encode())
+    (a / "avatarParaments" / "avtr_x.json").write_text('{"OSC": {"Amp_JawOpenAmp": 2.0}}')
+    out = tmp_path / "cfg.json"
+    S.export_bundle(str(out), str(a / "iniFile.ini"))
+    data = json.load(open(out))
+    assert data["avatarParaments"]["avtr_x"] == {"OSC": {"Amp_JawOpenAmp": 2.0}}
+    assert not any("cymple" in k.lower() for k in data["settings"])
+    assert "ini" not in data and isinstance(data["settings"], dict)
+    b.mkdir()
+    (b / "iniFile.ini").write_text("[OSC]\nold = 1\n")
+    S.import_bundle(str(out), str(b))
+    assert C.read_ini(str(b / "iniFile.ini")) == C.read_ini(str(a / "iniFile.ini")) | {"OSC": {"old": "1", **C.read_ini(str(a / "iniFile.ini"))["OSC"]}}
+    assert json.load(open(b / "avatarParaments" / "avtr_x.json")) == {"OSC": {"Amp_JawOpenAmp": 2.0}}
+    assert any(n.startswith("iniFile.ini.bak-") for n in os.listdir(b))

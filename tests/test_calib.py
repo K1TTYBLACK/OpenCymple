@@ -3,11 +3,11 @@ import math
 
 import pytest
 
-from opencymple_linux import calib as K
-from opencymple_linux import calibration as C
-from opencymple_linux.calibration import Calibration
-from opencymple_linux.face import EyeCore
-from opencymple_linux.gaze import feature_mode2, mesh_map
+from opencymple import calib as K
+from opencymple import calibration as C
+from opencymple.calibration import Calibration
+from opencymple.face import EyeCore
+from opencymple.gaze import feature_mode2, mesh_map
 
 
 class Writer:

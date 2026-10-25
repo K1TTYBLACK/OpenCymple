@@ -4,7 +4,7 @@ Sidebar, upper deck: the 70 values, Cymple's eye and mouth settings, the 28 ampl
 output. Lower deck: the log window and the settings copy's import and export. Beside the pages:
 previews (the eyes' model inputs with landmarks, the mouth's camera frame, rates) and the gaze plot.
 Every change applies at once and is saved to our settings copy (settings.py) after a short pause;
-Cymple's own files change only through Export To.
+The settings copy is imported from and exported to a file of the user's choice.
 """
 import logging
 import os
@@ -27,7 +27,9 @@ from .. import logs
 from .. import protocol as P
 from .. import settings as S
 from ..params import FIELDS
+from ..outputs import avatar as avatar_out
 from ..runtime import Runtime
+from .. import desktop
 from ..desktop import icon_path
 from .icons import icon
 from .widgets import LANDMARK_COLORS, GazeView, ImageView, LogView, SliderRow, ValueBars, dim, gray_qimage
@@ -489,8 +491,10 @@ class MainWindow(QMainWindow):
             inner.addWidget(s)
         box.addWidget(card)
         card, inner = _card("Eye switches")
+        self.eye_switches = {}
         for slot, title in EYE_SWITCHES:
             cb = ToggleRow(title)
+            self.eye_switches[slot] = cb
             cb.setChecked(bool(cal.switches.get(slot)))
             cb.toggled.connect(lambda on, s=slot: self._changed(self.rt.set_switch, s, on))
             inner.addWidget(cb)
@@ -618,6 +622,19 @@ class MainWindow(QMainWindow):
         self.osc_avatar.setCurrentIndex(max(0, self.osc_avatar.findData(o["avatar"])))
         self.osc_avatar.currentIndexChanged.connect(self._osc_option_changed)
         form.addRow("Avatar parameters", self.osc_avatar)
+        self.osc_config_dir = QLineEdit(o["config_dir"])
+        detected = avatar_out.osc_config_dirs()
+        self.osc_config_dir.setPlaceholderText(detected[0] if detected else "Autodetect (nothing found)")
+        self.osc_config_dir.setToolTip("VRChat's OSC folder, the one containing usr_*/Avatars. "
+                                       "Leave empty to autodetect in the Steam Proton prefix.")
+        self.osc_config_dir.editingFinished.connect(self._osc_option_changed)
+        browse = QPushButton("Browse")
+        browse.clicked.connect(self._browse_osc_config_dir)
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(self.osc_config_dir, 1)
+        row.addWidget(browse)
+        form.addRow("Avatar config folder", row)
         self.osc_status = QLabel("-")
         self.osc_status.setWordWrap(True)
         form.addRow("Status", self.osc_status)
@@ -655,27 +672,75 @@ class MainWindow(QMainWindow):
         self.window_buttons.setChecked(self.opts.get("window", {}).get("buttons", True))
         self.window_buttons.toggled.connect(self._window_buttons_toggled)
         v.addWidget(self.window_buttons)
+        self.close_to_tray = ToggleRow("Closing the window keeps OpenCymple running in the tray")
+        self.close_to_tray.setChecked(self.opts.get("window", {}).get("close_to_tray", True))
+        self.close_to_tray.toggled.connect(self._close_to_tray_toggled)
+        v.addWidget(self.close_to_tray)
         box.addWidget(g)
         g, v = _card("OpenCymple config")
-        readonly = self.rt.writer.readonly
         text = self.palette().color(QPalette.ColorRole.ButtonText)
         row = QHBoxLayout()
-        b = QPushButton("Import From")
+        b = QPushButton("Import")
         b.setIcon(icon("file-down", text))
         b.clicked.connect(self._import)
         row.addWidget(b)
-        b = QPushButton("Export To")
+        b = QPushButton("Export")
         b.setIcon(icon("file-up", text))
-        b.setEnabled(not readonly)
         b.clicked.connect(self._export)
         row.addWidget(b)
         row.addStretch(1)
         v.addLayout(row)
         box.addWidget(g)
+        g, v = _card("Integration")
+        self.entry_button = QPushButton()
+        self.entry_button.clicked.connect(self._toggle_entry)
+        v.addWidget(self.entry_button)
+        self.link_button = QPushButton()
+        self.link_button.clicked.connect(self._toggle_link)
+        v.addWidget(self.link_button)
+        self.integration_note = _note("")
+        v.addWidget(self.integration_note)
+        self._sync_integration()
+        box.addWidget(g)
         box.addStretch(1)
         return w
 
     # ---- changes -------------------------------------------------------------------------
+    def _sync_integration(self, note=""):
+        self.entry_button.setText("Remove desktop entry" if desktop.installed() else "Install desktop entry")
+        self.link_button.setText("Remove `opencymple` from terminal" if desktop.linked()
+                                 else "Add `opencymple` to terminal")
+        if not note and desktop.linked() and not desktop.on_path():
+            note = "%s is not on your PATH" % os.path.dirname(desktop.link_path())
+        self.integration_note.setText(note)
+
+    def _toggle_entry(self):
+        try:
+            if desktop.installed():
+                desktop.uninstall_entry()
+                note = "Desktop entry removed."
+            else:
+                desktop.install_entry()
+                note = "OpenCymple is in the application menu and in WiVRn's list of applications."
+        except OSError as e:
+            log.error("desktop entry failed: %s", e)
+            note = "Failed: %s" % e
+        self._sync_integration(note)
+
+    def _toggle_link(self):
+        try:
+            if desktop.linked():
+                desktop.unlink_command()
+                note = "Removed %s." % desktop.link_path()
+            elif desktop.link_command():
+                note = "Linked %s." % desktop.link_path()
+            else:
+                note = "Nothing linked: %s exists or OpenCymple has no console script." % desktop.link_path()
+        except OSError as e:
+            log.error("terminal command failed: %s", e)
+            note = "Failed: %s" % e
+        self._sync_integration(note)
+
     def _afk_toggled(self, on):
         self.rt.pipeline.afk.enabled = on
         self.opts["afk"]["enabled"] = on
@@ -687,6 +752,10 @@ class MainWindow(QMainWindow):
         S.save_options(self.opts)
         for b in self.winctl_buttons:
             b.setVisible(on)
+
+    def _close_to_tray_toggled(self, on):
+        self.opts.setdefault("window", {})["close_to_tray"] = on
+        S.save_options(self.opts)
 
     def _changed(self, setter, key, value):
         setter(key, value)
@@ -799,6 +868,14 @@ class MainWindow(QMainWindow):
             return w.current.name
         return avatar_id or "-"
 
+    def _browse_osc_config_dir(self):
+        start = self.osc_config_dir.text().strip() or self.osc_config_dir.placeholderText()
+        d = QFileDialog.getExistingDirectory(self, "VRChat OSC config folder",
+                                             start if os.path.isdir(start) else os.path.expanduser("~"))
+        if d:
+            self.osc_config_dir.setText(d)
+            self._osc_option_changed()
+
     def _osc_option_changed(self, *_):
         target = self.osc_target.text().strip()
         invalid = not TARGET_RE.match(target)
@@ -807,7 +884,8 @@ class MainWindow(QMainWindow):
         if invalid:
             return
         o = self.opts["osc"]
-        new = {"enabled": self.osc_enabled.isChecked(), "target": target, "avatar": self.osc_avatar.currentData()}
+        new = {"enabled": self.osc_enabled.isChecked(), "target": target, "avatar": self.osc_avatar.currentData(),
+               "config_dir": self.osc_config_dir.text().strip()}
         if new == o and (self.rt.vrchat is not None) == new["enabled"]:
             return
         o.update(new)
@@ -818,48 +896,53 @@ class MainWindow(QMainWindow):
         o = self.opts["osc"]
         if self.osc_enabled.isChecked():
             try:
-                self.rt.start_osc(o["target"], o["avatar"], self.args.osc_listen)
+                self.rt.start_osc(o["target"], o["avatar"], self.args.osc_listen, o["config_dir"])
             except (OSError, ValueError) as e:
                 QMessageBox.warning(self, "VRChat output", "Cannot start the OSC output: %s" % e)
         else:
             self.rt.stop_osc()
 
     def _import(self):
-        source = C.find_ini()
-        if not source:
-            QMessageBox.information(self, "Import From", "No Windows Cymple installation found.")
-            return
-        question = ("Replace OpenCymple's settings and amplitude sets with Windows Cymple's?\n"
-                    "Ours are kept as backups. Restart OpenCymple to use them.")
-        if QMessageBox.question(self, "Import From", question) != QMessageBox.StandardButton.Yes:
+        path, _ = QFileDialog.getOpenFileName(self, "Import", "", "OpenCymple config (*.json *.ini);;All files (*)")
+        if not path:
             return
         self.rt.flush()                          # pending changes go into our copy first, so the backup has them
-        S.import_from_cymple(source, force=True)
-        QMessageBox.information(self, "Import From", "Done. Restart OpenCymple to use the imported settings.")
+        try:
+            S.import_bundle(path)
+            self.rt.reload()
+        except (OSError, ValueError) as e:
+            log.error("import from %s failed: %s", path, e)
+            return
+        self._sync_from_runtime()
+        log.info("imported %s", path)
+
+    def _sync_from_runtime(self):
+        """Show the running calibration in the controls (after an import)."""
+        cal = self.rt.calib
+        for attr, s in self.eye_sliders.items():
+            s.set_value(getattr(cal, attr))
+        for slot, cb in self.eye_switches.items():
+            cb.blockSignals(True)
+            cb.setChecked(bool(cal.switches.get(slot)))
+            cb.blockSignals(False)
+        for attr, s in self.mouth_sliders.items():
+            s.set_value(getattr(cal.mouth, attr))
+        self.auto_roi.blockSignals(True)
+        self.auto_roi.setChecked(cal.mouth.auto_roi)
+        self.auto_roi.blockSignals(False)
+        self._sync_area_sliders()
+        self._update_amp_view(force=True)
 
     def _export(self):
-        from ..oracle import cymple_pids
-        target = C.find_ini()
-        if not target:
-            QMessageBox.information(self, "Export", "No Windows Cymple installation found.")
-            return
-        if cymple_pids():
-            QMessageBox.warning(self, "Export", "Windows Cymple is running. Close it first: it writes its INI "
-                                                "again when it exits.")
+        path, _ = QFileDialog.getSaveFileName(self, "Export", "opencymple-config.json",
+                                              "OpenCymple config (*.json);;All files (*)")
+        if not path:
             return
         self.rt.flush()
-        keys, files = S.export_plan(self.rt.ini, target)
-        if not keys and not files:
-            QMessageBox.information(self, "Export", "Windows Cymple already has these settings.")
-            return
-        lines = ["[%s] %s = %s" % (sec, k, v) for sec, vals in keys.items() for k, v in vals.items()]
-        lines += ["%s/%s" % (S.AVATAR_DIR, n) for n in files]
-        shown = "\n".join(lines[:25]) + ("\n… and %d more" % (len(lines) - 25) if len(lines) > 25 else "")
-        if QMessageBox.question(self, "Export", "Write these settings into %s?\nA backup is kept.\n\n%s"
-                                % (target, shown)) != QMessageBox.StandardButton.Yes:
-            return
-        _, _, backup = S.export_to_cymple(self.rt.ini, target)
-        QMessageBox.information(self, "Export", "Done.%s" % (" Backup: %s" % backup if backup else ""))
+        try:
+            S.export_bundle(path, self.rt.ini)
+        except OSError as e:
+            log.error("export to %s failed: %s", path, e)
 
     def _export_logs(self):
         name = "opencymple-%s.log" % time.strftime("%Y%m%d-%H%M%S")
@@ -988,6 +1071,8 @@ class MainWindow(QMainWindow):
             self.rt.flush()
             self.shell.window_closed(self)
             super().closeEvent(event)
+            if not self.opts.get("window", {}).get("close_to_tray", True) and not self.shell.quitting:
+                QTimer.singleShot(0, self.shell.quit)
             return
         self.headset.stop(wait=5.0)
         self.rt.stop()
@@ -1042,6 +1127,8 @@ def _screenshots(win, path):
 def run_gui(args, ini, model_dir, source_kwargs):
     # Qt's Wayland text-input logs a warning on every focus change; keep the terminal readable
     os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.wayland.textinput=false")
+    # file dialogs go through xdg-desktop-portal: the desktop's own file manager, not Qt's built-in one
+    os.environ["QT_QPA_PLATFORMTHEME"] = "xdgdesktopportal"
     app = QApplication.instance() or QApplication(sys.argv[:1])
     app.setApplicationName("opencymple-linux")
     from PySide6.QtGui import QIcon
