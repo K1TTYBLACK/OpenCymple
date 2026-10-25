@@ -10,6 +10,7 @@ import time
 
 from . import __version__
 from . import calibration as C
+from . import logs
 from . import protocol as P
 
 log = logging.getLogger("opencymple_linux")
@@ -435,6 +436,7 @@ def main(argv=None):
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname).1s %(name)s: %(message)s", datefmt="%H:%M:%S")
+    logs.attach()                                # the window's Logs tab, for `gui`
     try:
         return args.func(args) or 0
     except (OSError, RuntimeError) as e:

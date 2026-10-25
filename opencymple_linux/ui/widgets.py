@@ -4,10 +4,13 @@ import math
 from collections import deque
 
 import numpy as np
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QImage, QPainter, QPalette, QPen, QPolygonF
-from PySide6.QtWidgets import (QDoubleSpinBox, QHBoxLayout, QLabel, QSizePolicy, QSlider, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import (QDoubleSpinBox, QHBoxLayout, QLabel, QPlainTextEdit, QSizePolicy, QSlider,
+                               QToolButton, QVBoxLayout, QWidget)
+
+from .. import logs
+from .icons import icon
 
 LANDMARK_COLORS = ["#ffc800"] * 2 + ["#00ff00"] * 2 + ["#00a0ff"] * 2 + ["#ff3030", "#ff00ff"]
 OVERLAY = QColor("#ffe000")
@@ -15,10 +18,8 @@ LEFT_COLOR, RIGHT_COLOR = QColor("#4aa3ff"), QColor("#ff9d3a")
 
 
 def dim(label):
-    """Secondary text: the palette's placeholder colour."""
-    pal = label.palette()
-    pal.setColor(QPalette.ColorRole.WindowText, pal.color(QPalette.ColorRole.PlaceholderText))
-    label.setPalette(pal)
+    """Secondary text: the muted colour of the stylesheet (QLabel[muted="true"])."""
+    label.setProperty("muted", True)
     return label
 
 
@@ -45,6 +46,9 @@ class ImageView(QWidget):
         self.setMinimumSize(120, 90)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
+    def sizeHint(self):
+        return QSize(300, 240)                   # a camera cell: the previews column is as wide as two of these
+
     def set_image(self, image):
         self.image = image
         self.update()
@@ -70,10 +74,10 @@ class ImageView(QWidget):
 
     def paintEvent(self, event):
         p = QPainter(self)
-        p.fillRect(self.rect_widget(), QColor("#101014"))
+        p.fillRect(self.rect_widget(), self.palette().color(QPalette.ColorRole.Window))
         t = self._target()
         if self.image is None:
-            p.setPen(QColor("#808080"))
+            p.setPen(self.palette().color(QPalette.ColorRole.PlaceholderText))
             p.drawText(self.rect_widget(), Qt.AlignmentFlag.AlignCenter, self.placeholder)
         else:
             p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
@@ -95,7 +99,7 @@ class ImageView(QWidget):
                 p.setBrush(QColor(c))
                 p.drawEllipse(self._map(t, x, y), rad, rad)
         if self.caption:
-            p.setPen(QColor("#e0e0e0"))
+            p.setPen(self.palette().color(QPalette.ColorRole.WindowText))
             p.drawText(QRectF(6, 4, self.width() - 12, 18), Qt.AlignmentFlag.AlignLeft, self.caption)
         p.end()
 
@@ -121,45 +125,68 @@ class ImageView(QWidget):
             self.update()
 
 
+class WheelFreeSlider(QSlider):
+    """The wheel never moves it: the event goes on to the scroll area under the pointer."""
+    def wheelEvent(self, event):
+        event.ignore()
+
+
+class WheelFreeSpinBox(QDoubleSpinBox):
+    def wheelEvent(self, event):
+        event.ignore()
+
+
 class SliderRow(QWidget):
-    """Title, optional description, slider and spin box; valueChanged only on user input."""
+    """Title, optional description, then the slider, its spin box and, with a `default`, a button that
+    resets the row to it; valueChanged only on user input (the reset button counts)."""
     valueChanged = Signal(float)
 
-    def __init__(self, title, lo, hi, step, decimals=2, description="", suffix="", compact=False, parent=None):
+    def __init__(self, title, lo, hi, step, decimals=2, description="", suffix="", default=None, parent=None):
         super().__init__(parent)
         self.lo, self.step = lo, step
-        self.slider = QSlider(Qt.Orientation.Horizontal)
+        self.slider = WheelFreeSlider(Qt.Orientation.Horizontal)
+        self.slider.setFocusPolicy(Qt.FocusPolicy.TabFocus)       # a click or drag never focuses (and highlights) it
         self.slider.setRange(0, round((hi - lo) / step))
-        self.spin = QDoubleSpinBox()
+        self.spin = WheelFreeSpinBox()
         self.spin.setRange(lo, hi)
         self.spin.setSingleStep(step)
         self.spin.setDecimals(decimals)
         self.spin.setSuffix(suffix)
         self.spin.setKeyboardTracking(False)
+        self.spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.spin.setFixedWidth(76)
         self.slider.valueChanged.connect(self._from_slider)
         self.spin.valueChanged.connect(self._from_spin)
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
-        title_label = QLabel(title)
-        if compact:
-            title_label.setMinimumWidth(115)
-            row.addWidget(title_label)
+        row.setSpacing(16)
         row.addWidget(self.slider, 1)
         row.addWidget(self.spin)
-        if compact:
-            self.setLayout(row)
-            return
+        self.default = default
+        if default is not None:
+            reset = QToolButton()
+            reset.setObjectName("reset")
+            reset.setIcon(icon("rotate-ccw", QColor("#8ba3bd")))
+            reset.setIconSize(QSize(16, 16))
+            reset.setToolTip("Reset to default (%s)" % self.spin.textFromValue(default).strip())
+            reset.setAccessibleName("Reset %s" % title)
+            reset.clicked.connect(self._reset)
+            row.addWidget(reset)
         box = QVBoxLayout(self)
         box.setContentsMargins(0, 4, 0, 4)
         box.setSpacing(2)
-        title_label.setStyleSheet("font-weight: bold")
+        title_label = QLabel(title)
+        title_label.setObjectName("rowTitle")
         box.addWidget(title_label)
         if description:
             d = QLabel(description)
             d.setWordWrap(True)
             box.addWidget(dim(d))
         box.addLayout(row)
+
+    def _reset(self):
+        self.set_value(self.default)
+        self.valueChanged.emit(self.spin.value())
 
     def value(self):
         return self.spin.value()
@@ -248,6 +275,29 @@ class ValueBars(QWidget):
         p.end()
 
 
+class LogView(QPlainTextEdit):
+    """The lines of a logs.LogBuffer: its history when created, then the new ones on each refresh().
+    It follows the newest line unless the reader has scrolled up."""
+
+    def __init__(self, buffer, parent=None):
+        super().__init__(parent)
+        self.buffer, self.seen = buffer, 0
+        self.setObjectName("log")
+        self.setReadOnly(True)
+        self.setMaximumBlockCount(logs.CAPACITY)
+        self.refresh()
+
+    def refresh(self):
+        lines, self.seen = self.buffer.since(self.seen)
+        if not lines:
+            return
+        bar = self.verticalScrollBar()
+        at_end = bar.value() >= bar.maximum() - 2
+        self.appendPlainText("\n".join(lines))
+        if at_end:
+            bar.setValue(bar.maximum())
+
+
 class GazeView(QWidget):
     """Yaw/pitch of both eyes in [-1, 1] (up = positive pitch), short trails, and the lid-close
     value of each eye as a bar on its side."""
@@ -273,8 +323,10 @@ class GazeView(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         bar_w, gap = 14, 10
-        side = min(self.width() - 2 * (bar_w + gap), self.height()) - 8
-        cx, cy = self.width() / 2, self.height() / 2
+        top, bottom = 22, 18                     # the caption sits above the square, the L and R labels below it
+        room = self.height() - top - bottom
+        side = min(self.width() - 2 * (bar_w + gap), room) - 8
+        cx, cy = self.width() / 2, top + room / 2
         sq = QRectF(cx - side / 2, cy - side / 2, side, side)
         text = self.palette().windowText().color()
         grid = QColor(text)
@@ -302,7 +354,8 @@ class GazeView(QWidget):
                 h = max(0.0, min(1.0, v)) * side
                 p.fillRect(QRectF(x, sq.top(), bar_w, h), color)
         p.setPen(text)
-        p.drawText(QRectF(sq.left() + 4, sq.top() + 2, 200, 16), Qt.AlignmentFlag.AlignLeft, "gaze (L blue, R orange)")
+        p.drawText(QRectF(sq.left(), 0, self.width() - sq.left(), top), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                   "gaze (L blue, R orange)")
         p.drawText(QRectF(sq.left() - gap - bar_w - 4, sq.bottom() + 2, bar_w + 8, 14), Qt.AlignmentFlag.AlignCenter, "L")
         p.drawText(QRectF(sq.right() + gap - 4, sq.bottom() + 2, bar_w + 8, 14), Qt.AlignmentFlag.AlignCenter, "R")
         p.end()

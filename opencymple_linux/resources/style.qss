@@ -1,0 +1,102 @@
+/* SlimeVR-style dark theme for the preview window (ui/app.py: _apply_theme loads this file).
+   Navy surfaces stepped in lightness (window > panel > surface > surfaceHigh), one light-blue accent for
+   interactive and selected state, Poppins when it is installed (ui/app.py: _load_fonts), 8px radii.
+   The palette in _apply_theme carries the same colours for the widgets this file does not style. */
+* { font-family: "Poppins"; font-size: 13px; color: #f2f6fb; }
+
+QDialog, QMessageBox { background: #060f1c; }
+QMainWindow { background: transparent; }
+QWidget#shell { background: #060f1c; border-radius: 12px; }
+QWidget:disabled { color: #5a7691; }
+QWidget#panel { background: #0a1d33; border-radius: 4px; }
+QWidget#qt_scrollarea_viewport { background: transparent; }
+QScrollArea { background: transparent; border: none; }
+QSplitter { background: #060f1c; }
+
+QLabel[muted="true"] { color: #8ba3bd; }
+QLabel#rowTitle { font-weight: 600; }
+
+/* Frameless window: title bar, left nav (checked = accent tint), status badges, window buttons */
+QLabel#appName { font-weight: 600; }
+QLabel#panelTitle { font-size: 16px; font-weight: 700; }
+QLabel#badge { border-radius: 8px; padding: 2px 10px; font-size: 12px; font-weight: 600; }
+QLabel#badge[kind="success"] { color: #3ddc97; background: #0d4636; }
+QLabel#badge[kind="accent"] { color: #04121f; background: #4cc2ff; }
+QToolButton#winctl { background: transparent; border: none; border-radius: 6px; color: #8ba3bd; min-width: 32px; min-height: 28px; }
+QToolButton#winctl:hover { background: #153453; color: #f2f6fb; }
+/* the nav buttons are painted by NavButton (ui/app.py); the stylesheet gives them the label's weight */
+QToolButton#nav { font-weight: 600; }
+/* keyboard focus: a 2px accent ring, the same ring the fields and buttons take */
+QToolButton#winctl:focus { border: 2px solid #4cc2ff; }
+
+/* Tabs: the bar sits on the window colour, the selected tab takes the accent tint */
+QTabWidget { background: transparent; }
+QTabWidget::pane { background: transparent; border: none; }
+QTabBar { background: transparent; }
+QTabBar::tab { background: transparent; color: #8ba3bd; padding: 8px 16px; margin-right: 4px; border-radius: 8px; font-weight: 600; }
+QTabBar::tab:hover { background: #0f2742; }
+QTabBar::tab:selected { background: rgba(76,194,255,41); color: #4cc2ff; }
+
+/* Cards: group boxes are surface panels, their title sits inside the top padding */
+QGroupBox { background: #0f2742; border: none; border-radius: 8px; margin: 0; padding: 48px 16px 16px 16px; font-size: 20px; font-weight: 600; }
+QGroupBox::title { subcontrol-origin: padding; subcontrol-position: top left; left: 16px; top: 12px; }
+
+QPushButton { background: #0f2742; border: none; border-radius: 8px; min-height: 42px; padding: 0 16px; font-weight: 600; }
+QPushButton:hover { background: #153453; }
+QPushButton:pressed { background: #0a1d33; }
+QPushButton:disabled { background: #0f2742; color: #5a7691; }
+QPushButton[primary="true"] { background: #4cc2ff; color: #04121f; }
+QPushButton[primary="true"]:hover { background: #7bd3ff; }
+QPushButton[primary="true"]:pressed { background: #2aa5e8; }
+QPushButton[primary="true"]:disabled { background: #2b6c94; color: #04121f; }
+QPushButton:focus { border: 2px solid #4cc2ff; }
+QPushButton[primary="true"]:focus { border: 2px solid #f2f6fb; }
+/* idle buttons on a card take the next surface step, or they vanish into the card */
+QGroupBox QPushButton { background: #153453; }
+QGroupBox QPushButton:hover { background: #1b3a5c; }
+QGroupBox QPushButton:pressed { background: #0f2742; }
+/* a disabled one steps back to the panel colour, or it vanishes into the card too */
+QGroupBox QPushButton:disabled { background: #0a1d33; }
+
+/* Toggles are painted by ToggleRow (ui/app.py); the stylesheet only gives the label its weight */
+QCheckBox#toggle { font-weight: 600; }
+
+QLineEdit, QDoubleSpinBox, QSpinBox, QComboBox {
+    background: #153453; border: none; border-radius: 6px; padding: 0 12px;
+    selection-background-color: #4cc2ff; selection-color: #04121f;
+}
+QLineEdit { min-height: 42px; }
+QComboBox { min-height: 42px; }
+QDoubleSpinBox, QSpinBox { min-height: 28px; padding: 0 8px; font-weight: 600; }
+QDoubleSpinBox::up-button, QDoubleSpinBox::down-button, QSpinBox::up-button, QSpinBox::down-button { width: 0; border: none; }
+QLineEdit:focus, QDoubleSpinBox:focus, QSpinBox:focus, QComboBox:focus { border: 2px solid #4cc2ff; padding: 0 10px; }
+QDoubleSpinBox:focus, QSpinBox:focus { padding: 0 6px; }
+/* error text: #e0526a is 3.4:1 on the field, this lighter red clears 4.5:1; the border keeps the colour */
+QLineEdit[invalid="true"] { color: #f07a8c; border: 1px solid #e0526a; }
+QLineEdit[invalid="true"]:focus { border: 2px solid #e0526a; }
+QComboBox::drop-down { border: none; width: 24px; }
+QComboBox::down-arrow { width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid #8ba3bd; }
+QComboBox QAbstractItemView { background: #153453; border: none; outline: 0; padding: 4px; selection-background-color: rgba(76,194,255,41); selection-color: #4cc2ff; }
+
+/* the track is 3:1 against the accent fill; it sits 2.5:1 on the card, the fill is what carries the value */
+QSlider:horizontal { min-height: 24px; }
+QSlider::groove:horizontal { height: 4px; background: #4b647e; border-radius: 2px; }
+QSlider::sub-page:horizontal { background: #4cc2ff; border-radius: 2px; }
+QSlider::handle:horizontal { background: #4cc2ff; width: 16px; height: 16px; margin: -6px 0; border-radius: 8px; }
+
+QScrollBar:vertical { background: transparent; width: 8px; margin: 0; }
+QScrollBar::handle:vertical { background: #1b3a5c; border-radius: 4px; min-height: 32px; }
+QScrollBar::handle:vertical:hover { background: #2b6c94; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; width: 0; }
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }
+
+/* the reset button of a slider row: a 28px square, the height of its spin box */
+QToolButton#reset { background: #153453; border: none; border-radius: 6px; min-width: 28px; max-width: 28px; min-height: 28px; max-height: 28px; }
+QToolButton#reset:hover { background: #1b3a5c; }
+QToolButton#reset:focus { border: 2px solid #4cc2ff; }
+
+QToolTip { background: #153453; color: #f2f6fb; border: 1px solid #1b3a5c; padding: 4px 8px; }
+
+/* Logs tab: the log window is a card with monospace text */
+QPlainTextEdit#log { background: #0f2742; border: none; border-radius: 8px; padding: 12px; font-family: monospace; font-size: 12px; selection-background-color: #4cc2ff; selection-color: #04121f; }
+QPlainTextEdit#log:focus { border: 2px solid #4cc2ff; padding: 10px; }

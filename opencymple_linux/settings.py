@@ -22,7 +22,8 @@ INI_NAME = "iniFile.ini"
 AVATAR_DIR = "avatarParaments"
 OPTIONS_NAME = "opencymple-linux.json"
 EXPORT_SECTIONS = ("OSC", "Cymple_Mouth", "CympleFace_LeftEye", "CympleFace_RightEye")
-DEFAULT_OPTIONS = {"osc": {"enabled": True, "target": "127.0.0.1:9000", "avatar": "auto"}}
+DEFAULT_OPTIONS = {"osc": {"enabled": True, "target": "127.0.0.1:9000", "avatar": "auto"},
+                   "afk": {"enabled": False}}
 
 
 def config_dir():
@@ -48,12 +49,16 @@ def import_from_cymple(source_ini, directory=None, force=False):
     if os.path.exists(dst) and not force:
         return dst
     os.makedirs(d, exist_ok=True)
+    stamp = _stamp()
+    dst_av = os.path.join(d, AVATAR_DIR)
     if os.path.exists(dst):
-        shutil.copy2(dst, "%s.bak-%s" % (dst, _stamp()))
+        shutil.copy2(dst, "%s.bak-%s" % (dst, stamp))
+        if os.path.isdir(dst_av):                    # its amplitude sets are overwritten below
+            shutil.copytree(dst_av, "%s.bak-%s" % (dst_av, stamp), dirs_exist_ok=True)
     shutil.copy2(source_ini, dst)
     src_av = os.path.join(os.path.dirname(source_ini), AVATAR_DIR)
     if os.path.isdir(src_av):
-        shutil.copytree(src_av, os.path.join(d, AVATAR_DIR), dirs_exist_ok=True)
+        shutil.copytree(src_av, dst_av, dirs_exist_ok=True)
     opts = load_options(d)
     opts.update(imported_from=os.path.abspath(source_ini), imported_at=time.strftime("%Y-%m-%d %H:%M:%S"))
     save_options(opts, d)

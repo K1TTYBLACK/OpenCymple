@@ -93,12 +93,14 @@ nothing.
 | `face.py` | Eye core (M3): lid close, squint, wide/brow fields, closed-eye hold, blink state machine; mouth core (M4): filters, mapping, amplitudes |
 | `params.py` | The 70 field names, VRCFT 22999 packet encode/decode |
 | `pipeline.py` | One worker thread per stream with a newest-frame mailbox; 10 ms packet timer feeding the outputs |
+| `afk.py` | AFK detection: default values while the eye cameras see no eye (our addition) |
 | `outputs/osc.py` | OSC encoder (bundles ≤ 4096 B like Cymple), sender |
 | `outputs/vrcft_params.py` | VRCFaceTracking's avatar parameters (v2, legacy, binary, native) from the fields |
 | `outputs/avatar.py` | Current avatar's parameter list: OSCQuery, else VRChat's OSC config files |
 | `outputs/vrchat.py` | Mode A sender: relevance, 1e-4 deadband, refresh every 5 s |
 | `oracle.py` | Runs Windows Cymple in Bottles on a capture and compares |
-| `ui/app.py`, `ui/widgets.py` | The window (PySide6): previews, values, eye/mouth/amplitude pages, output |
+| `ui/app.py`, `ui/widgets.py`, `ui/icons.py` | The window (PySide6): previews, values, eye/mouth/amplitude pages, output, logs, settings; Lucide icons |
+| `logs.py` | The log lines of this process, kept in memory for the Logs tab and Export Logs |
 | `ui/calibration.py` | Desktop target display for the 13-point calibration |
 | `overlay.py` | Cymple's calibration overlay geometry: dot positions, stick steps, FOV limit (M8) |
 | `ui/xr_overlay.py` | The 13-point calibration as an OpenXR overlay session (EGL, quad layers, controller actions) |
@@ -180,18 +182,22 @@ SRanipal lip set and the legacy eye set (head pose left out).
 ## Window (M6)
 
 `opencymple-linux gui` runs the same pipeline as `run` with a window in the same process (Qt Widgets,
-Fusion style, dark unless the desktop asks for light). The pages follow Windows Cymple's QML
+Fusion style with a dark SlimeVR-style theme from `resources/style.qss`; Poppins is used when its TTF files are in `resources/fonts/`). The pages follow Windows Cymple's QML
 (`uiApi.dll`): same controls, ranges and steps, and the same INI keys.
 
-- Previews: per eye the camera frame with the stored ROI quad and the 96×96 model crop with the 8
-  landmarks; the mouth frame after rotation with the auto-ROI quad or the manual rectangle, and its
-  crop. Under each: device and firmware, received and tracked fps, inference time, latency (frame
-  complete → result) and dropped frames. A gaze plot shows both eyes' yaw/pitch with lid bars.
+- Previews: per eye the 96×96 model input with the 8 landmarks; the mouth's camera frame after rotation
+  with the auto-ROI quad or the manual rectangle. Under each: device and firmware, received and tracked
+  fps, inference time, latency (frame complete → result) and dropped frames. A gaze plot shows both
+  eyes' yaw/pitch with lid bars.
 - Values: all 70 fields as bars; the five Cymple never fills are greyed.
+  AFK Detection (our addition, off by default, saved in `opencymple-linux.json`): when both eye
+  crops stay dark (mean < 30) for 1 s, or no eye frames arrive, every field is sent as 0 until an eye
+  is lit again for 0.5 s (`afk.py`). Worn, the crop never fell below 46 on corpus1 or h3-vrchat;
+  with the headset off it is 7..13 (end of h3-vrchat, all of live-test-1).
 - Eyes: eyelid smoothing (`eyeExpressionFilter` 0–0.5), gaze smoothing (`eyeGazeFilter` 0.2–1),
   eye closing (`eyeBlinkCloseAmplitude` 0.1–0.3), gaze range (`eyeGazeAmplitude` 0.5–1), squint
-  compensation (0–1), eye sync (`eyeGazeSyncRate` 0–100); switches flip vertical gaze (7), sync
-  eyelids (9), silly mode (12); eye ROI calibration with model0 on the latest frames (both, left or
+  compensation (0–1), eye sync (`eyeGazeSyncRate` 0–100); switches flip vertical gaze (7) and sync
+  eyelids (9); eye ROI calibration with model0 on the latest frames (both, left or
   right); status of the stored gaze mesh.
 - Mouth: smoothing (`filer` 0–0.5), camera rotation (−180…180 in steps of 5), automatic mouth area,
   manual area by sliders or by dragging a rectangle on the mouth preview (Cymple's clamping rules:
@@ -200,8 +206,12 @@ Fusion style, dark unless the desktop asks for light). The pages follow Windows 
   under Cymple's key for that slot, so the shifted keys stay compatible (the Smile slider writes
   `Amp_ShrugLowerAmp`, as Cymple's does). The page edits the default set, or the current avatar's
   own set once one is created; a set can be created for and deleted from the current avatar.
-- Output: VRChat OSC on/off, target, avatar-parameter source, live status; the camera source,
-  devices and headset; export to Windows Cymple (lists the changes and asks first).
+- Output (upper deck): VRChat OSC on/off, target, avatar-parameter source, live status; the camera
+  source, devices and headset.
+- Logs (lower deck): the log lines since OpenCymple started; Export Logs saves them as a text file.
+- Settings (lower deck): Import From copies Windows Cymple's settings and amplitude sets over ours (ours
+  are kept as backups; restart OpenCymple to use them); Export To writes ours into Windows Cymple (lists
+  the changes and asks first).
 
 Every change applies at once and is saved to our INI 0.6 s after the last one. Behaviour that is
 ours rather than Cymple's (unknown there): changing a smoothing slider keeps the filters' state
@@ -214,9 +224,9 @@ Not in the window yet: mouth V2 pages, dataset recording, firmware.
 
 ## Calibration (M7)
 
-Eyes tab → Gaze calibration: "Recenter both eyes", a precise/coarse switch
-(`eye_gaze_use_precise_calibration`), "Calibrate in headset" (13 dots, see M8 below) and "Calibrate
-on desktop" (13 dots in a window) or "Start coarse calibration (5 s)". Everything is written to our settings copy in Cymple's keys, so an export
+Eyes tab → Gaze calibration: "Recenter both eyes" and "Calibrate in headset" (13 dots, see M8 below);
+the coarse mode (`eye_gaze_use_precise_calibration` off) and the 13-dot desktop window are left to the
+tray and the CLI. Everything is written to our settings copy in Cymple's keys, so an export
 gives Windows Cymple the same calibration. Evidence from `cympleface.dll` (Hopper via REA, objdump
 for the float arguments):
 

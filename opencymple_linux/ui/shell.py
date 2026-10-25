@@ -39,6 +39,7 @@ class Shell(QObject):
         self.quitting = False
         self._buffers = {}
         self.reply_ready.connect(self._write_reply)
+        self.rt.pipeline.afk.enabled = self.opts["afk"]["enabled"]
         self._start_osc()
         self.tray = QSystemTrayIcon(app_icon(), self)
         self.tray.setToolTip(APP_NAME)
@@ -56,9 +57,6 @@ class Shell(QObject):
             log.warning("no system tray: control OpenCymple with `opencymple <command>`")
         self.server = QLocalServer(self)
         self._listen()
-        self.tip_timer = QTimer(self, interval=2000)
-        self.tip_timer.timeout.connect(self._update_tooltip)
-        self.tip_timer.start()
 
     # ---- pieces ---------------------------------------------------------------------------
     def _start_osc(self):
@@ -82,10 +80,6 @@ class Shell(QObject):
     def _tray_activated(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
             self.show_window()
-
-    def _update_tooltip(self):
-        hs = self.headset.status()
-        self.tray.setToolTip("%s\n%s" % (APP_NAME, hs or self.rt.status_line()))
 
     # ---- actions --------------------------------------------------------------------------
     def show_window(self):

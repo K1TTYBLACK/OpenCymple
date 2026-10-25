@@ -6,6 +6,7 @@
     opencymple calibrate coarse     5 s look-around range calibration
     opencymple recenter             recenter both eyes (look straight ahead)
     opencymple status | quit
+    opencymple help [COMMAND]       list the commands and what they do
     opencymple install | uninstall  desktop entry and icon (menu, WiVRn's application list)
 
 Commands go to the running OpenCymple; when none runs, a headless one is started in the background
@@ -16,35 +17,48 @@ import logging.handlers
 import os
 import sys
 
-from . import instance
+from . import instance, logs
 
 COMMANDS = ("calibrate", "recenter", "status", "quit")
 
 
 def _parser():
-    p = argparse.ArgumentParser(prog="opencymple", description="OpenCymple: Cymple eye and face tracking "
-                                "for VRChat on Linux.")
+    p = argparse.ArgumentParser(prog="opencymple", description="OpenCymple")
     p.add_argument("--headless", action="store_true", help="start without the window (tray icon only)")
-    p.add_argument("--no-osc", action="store_true", help="start with the VRChat output off")
+    p.add_argument("--no-osc", action="store_true", help="start with the OSC output off")
     p.add_argument("-v", "--verbose", action="store_true", help="debug logging")
     # for tests and debugging; passed on to a background instance started by a command
     p.add_argument("--replay", help=argparse.SUPPRESS)
     p.add_argument("--loop", action="store_true", help=argparse.SUPPRESS)
     sub = p.add_subparsers(dest="command", metavar="COMMAND")
     c = sub.add_parser("calibrate", help="start a gaze calibration")
-    c.add_argument("mode", choices=("precise", "coarse"),
-                   help="precise: 13 points in the headset; coarse: look around for 5 seconds")
+    c.add_argument("mode", choices=("precise"),
+                   help="13 points overlay")
     sub.add_parser("recenter", help="recenter both eyes: look straight ahead with relaxed eyes")
-    sub.add_parser("status", help="is OpenCymple running, are the eyes tracked")
-    sub.add_parser("quit", help="stop the running OpenCymple")
-    sub.add_parser("install", help="add the desktop entry and icon (menu, WiVRn's application list)")
-    sub.add_parser("uninstall", help="remove the desktop entry and icon")
+    sub.add_parser("status", help="is OpenCymple running?")
+    sub.add_parser("quit")
+    sub.add_parser("install", help="add the desktop entry")
+    sub.add_parser("uninstall", help="remove the desktop entry")
+    h = sub.add_parser("help", help="this menu")
+    h.add_argument("topic", nargs="?", help="a command to show in detail")
     return p
+
+
+def _help(parser, topic):
+    sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+    if topic is None:
+        parser.print_help()
+        return 0
+    if topic not in sub.choices:
+        print("unknown command: %s" % topic, file=sys.stderr)
+        return 1
+    sub.choices[topic].print_help()
+    return 0
 
 
 def _setup_logging(verbose):
     os.makedirs(instance.state_dir(), exist_ok=True)
-    fmt = logging.Formatter("%(asctime)s %(levelname).1s %(name)s: %(message)s", "%H:%M:%S")
+    fmt = logging.Formatter(logs.FORMAT, "%H:%M:%S")
     root = logging.getLogger()
     root.setLevel(logging.DEBUG if verbose else logging.INFO)
     to_file = logging.handlers.RotatingFileHandler(os.path.join(instance.state_dir(), "opencymple.log"),
@@ -52,6 +66,7 @@ def _setup_logging(verbose):
     for h in (logging.StreamHandler(), to_file):
         h.setFormatter(fmt)
         root.addHandler(h)
+    logs.attach()                                # the window's Logs tab
 
 
 def _request(args):
@@ -89,7 +104,10 @@ def _command(args):
 
 
 def main(argv=None):
-    args = _parser().parse_args(argv)
+    parser = _parser()
+    args = parser.parse_args(argv)
+    if args.command == "help":
+        return _help(parser, args.topic)
     if args.command in ("install", "uninstall"):
         from . import desktop
         if args.command == "install":

@@ -22,7 +22,7 @@ opencymple = "opencymple_linux.opencymple:main"
 packages = ["opencymple_linux", "opencymple_linux.outputs", "opencymple_linux.ui"]
 
 [tool.setuptools.package-data]
-opencymple_linux = ["resources/*.svg"]
+opencymple_linux = ["resources/*.svg", "resources/*.qss", "resources/fonts/*", "resources/icons/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -3,6 +3,7 @@ Cymple's files stay as they were. Needs the local install, the capture and PySid
 import argparse
 import hashlib
 import json
+import logging
 import os
 import shutil
 import socket
@@ -79,6 +80,19 @@ def test_window_changes_apply_and_save(runtime):
         _pump(app, 0.5)
         obs = rt.pipeline.snapshot()["mouth"]
         assert obs.quad is None and obs.rect is not None
+
+        assert not win.afk_toggle.isChecked() and not rt.pipeline.afk.enabled
+        assert any(rt.pipeline.snapshot()["mouth_fields"].values())
+        win.afk_toggle.setChecked(True)                           # live-test-1 was recorded with the headset off
+        assert rt.pipeline.afk.enabled and S.load_options()["afk"]["enabled"]
+        _pump(app, 1.5)
+        snap = rt.pipeline.snapshot()
+        assert rt.pipeline.afk.away and not any(snap["mouth_fields"].values()) and not any(snap["gaze"].values())
+        assert not win.afk_status.isHidden()
+        win.afk_toggle.setChecked(False)
+        _pump(app, 0.5)
+        assert not rt.pipeline.afk.away and any(rt.pipeline.snapshot()["mouth_fields"].values())
+        assert win.afk_status.isHidden()
 
         win.amp_sliders[14].spin.setValue(2.0)                    # "Smile" -> slot 14
         assert rt.calib.amps["Amp_ShrugLowerAmp"] == 2.0 and rt.pipeline.mouth_core.slots[14] == 2.0
@@ -213,3 +227,47 @@ def test_headset_flow_on_replay(runtime):
             side = ("Left", "Right")[eye]
             assert ours["%s_Eyegaze_mesh_overlay_ring_scale" % side] == "%.6f" % s
             assert ours["%s_Eyegaze_mesh_overlay_y_offset_meters" % side] == "%.6f" % y
+
+
+def test_window_decks_previews_and_log_export(runtime, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QApplication, QPushButton, QToolButton
+    from opencymple_linux import logs
+    from opencymple_linux.ui import app as ui
+    from opencymple_linux.ui.app import MainWindow
+    app = QApplication.instance() or QApplication([])
+    win = MainWindow(runtime, argparse.Namespace(no_osc=True, osc_listen=0), S.load_options())
+    try:
+        _pump(app, 1.0)
+        # upper deck: the pages in order, Output among them; lower deck: Logs and Settings
+        assert [win.tabs.tabText(i) for i in range(win.tabs.count())] == [
+            "Values", "Eyes", "Mouth", "Amplitudes", "Output", "Logs", "Settings"]
+        navs = [b.text() for b in win.findChildren(QToolButton, "nav") if not b.isHidden()]
+        assert navs == ["Values", "Eyes", "Mouth", "Amplitudes", "Output", "Logs", "Settings"]
+        # eyes show the model input only, the mouth the camera feed only
+        assert win.eye_panels[0].raw.isHidden() and not win.eye_panels[0].crop.isHidden()
+        assert win.mouth_panel.crop.isHidden() and not win.mouth_panel.raw.isHidden()
+        # narrow window: the previews become a tab in front of Output
+        win._place_previews(True)
+        assert win.tabs.indexOf(win.previews_area) == win.tabs.indexOf(win.output_page) - 1
+        win._place_previews(False)
+        assert {"Import From", "Export To", "Export Logs"} <= {b.text() for b in win.findChildren(QPushButton)}
+
+        logs.attach()
+        try:
+            logging.getLogger("test_gui").warning("hello from the window test")
+            win._refresh_slow(win.rt.pipeline.snapshot())
+            assert "hello from the window test" in win.log_view.toPlainText()
+
+            out = tmp_path / "exported.log"
+
+            class SaveDialog:
+                @staticmethod
+                def getSaveFileName(*_args, **_kwargs):
+                    return str(out), ""
+            monkeypatch.setattr(ui, "QFileDialog", SaveDialog)
+            win._export_logs()
+            assert "hello from the window test" in out.read_text(encoding="utf-8")
+        finally:
+            logging.getLogger().removeHandler(logs.BUFFER)
+    finally:
+        win.close()

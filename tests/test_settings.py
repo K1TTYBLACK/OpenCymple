@@ -42,6 +42,22 @@ def test_import_once_then_keep(cymple, tmp_path):
     assert S.resolve_ini(own=False) == str(cymple / "iniFile.ini")
 
 
+def test_forced_import_keeps_backups(cymple, tmp_path):
+    S.resolve_ini()                                              # our copy, imported once
+    own = tmp_path / "cfg"
+    (own / "avatarParaments" / "default.json").write_text(json.dumps({"OSC": {"Amp_JawOpenAmp": 2.0}}))
+    (cymple / "iniFile.ini").write_text(INI.replace("0.470000", "0.900000"))
+    S.import_from_cymple(str(cymple / "iniFile.ini"), force=True)
+    assert C.read_ini(S.resolve_ini())["OSC"]["eyeGazeFilter"] == "0.900000"
+    (ini_bak,) = [n for n in os.listdir(own) if n.startswith("iniFile.ini.bak-")]
+    assert C.read_ini(str(own / ini_bak))["OSC"]["eyeGazeFilter"] == "0.470000"
+    (av_bak,) = [n for n in os.listdir(own) if n.startswith("avatarParaments.bak-")]
+    with open(own / av_bak / "default.json") as f:
+        assert json.load(f)["OSC"]["Amp_JawOpenAmp"] == 2.0
+    with open(own / "avatarParaments" / "default.json") as f:
+        assert json.load(f)["OSC"]["Amp_JawOpenAmp"] == 1.5
+
+
 def test_writer_changes_only_our_copy(cymple):
     ini = S.resolve_ini()
     w = S.IniWriter(ini)
@@ -106,6 +122,7 @@ def test_options_merge(cymple):
     S.save_options(opts)
     again = S.load_options()
     assert again["osc"] == {"enabled": False, "target": "127.0.0.1:9000", "avatar": "auto"}
+    assert again["afk"] == {"enabled": False}
 
 
 def test_update_ini_keeps_crlf(tmp_path):

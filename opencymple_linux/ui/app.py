@@ -1,9 +1,10 @@
 """`opencymple-linux gui`: the pipeline of `run` plus a window in the same process.
 
-Left: per-stream previews (raw frame with the ROI, model crop with landmarks, rates) and the
-gaze plot. Right: the 70 values, Cymple's eye and mouth settings, the 28 amplitudes and the
-VRChat output. Every change applies at once and is saved to our settings copy (settings.py)
-after a short pause; Cymple's own files change only through Export.
+Sidebar, upper deck: the 70 values, Cymple's eye and mouth settings, the 28 amplitudes and the VRChat
+output. Lower deck: the log window and the settings copy's import and export. Beside the pages:
+previews (the eyes' model inputs with landmarks, the mouth's camera frame, rates) and the gaze plot.
+Every change applies at once and is saved to our settings copy (settings.py) after a short pause;
+Cymple's own files change only through Export To.
 """
 import logging
 import os
@@ -12,40 +13,42 @@ import signal
 import sys
 import time
 
-from PySide6.QtCore import QByteArray, Qt, QTimer
-from PySide6.QtGui import QColor, QGuiApplication, QPalette
-from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFormLayout, QGridLayout, QGroupBox,
-                               QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton,
-                               QRadioButton, QScrollArea, QSplitter, QTabWidget, QVBoxLayout, QWidget)
+from PySide6.QtCore import QByteArray, QRect, QRectF, QSize, Qt, QTimer
+from PySide6.QtGui import QColor, QFontDatabase, QIcon, QPainter, QPalette, QPen
+from PySide6.QtWidgets import (QAbstractButton, QApplication, QCheckBox, QComboBox, QFileDialog, QFormLayout,
+                               QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
+                               QMessageBox, QPushButton, QScrollArea, QSizeGrip, QSizePolicy, QSplitter, QTabWidget,
+                               QToolButton, QVBoxLayout, QWidget)
 
+from .. import __version__
 from .. import calibration as C
 from .. import imgproc
+from .. import logs
 from .. import protocol as P
 from .. import settings as S
 from ..params import FIELDS
 from ..runtime import Runtime
-from .widgets import LANDMARK_COLORS, GazeView, ImageView, SliderRow, ValueBars, dim, gray_qimage
+from ..desktop import icon_path
+from .icons import icon
+from .widgets import LANDMARK_COLORS, GazeView, ImageView, LogView, SliderRow, ValueBars, dim, gray_qimage
 from .xr_overlay import HeadsetLauncher
 
 log = logging.getLogger(__name__)
+RESOURCES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "resources")
 
 # Cymple's eye page (Cympleeye QML): attribute, title, from, to, step, decimals, description
 EYE_SLIDERS = (
-    ("eye_expression_filter", "Eyelid smoothing", 0.0, 0.5, 0.01, 2,
-     "Higher values make the eyelid open/close output smoother."),
-    ("eye_gaze_filter", "Gaze smoothing", 0.2, 1.0, 0.01, 2, "Higher values make eye movement smoother."),
+    ("eye_expression_filter", "Eyelid smoothing", 0.0, 0.5, 0.01, 2, None),
+    ("eye_gaze_filter", "Gaze smoothing", 0.2, 1.0, 0.01, 2, None),
     ("eye_blink_close_amplitude", "Eye closing", 0.1, 0.3, 0.01, 2,
      "Higher values close the eyes more easily; raise it when the eyes do not close fully."),
     ("eye_gaze_amplitude", "Gaze range", 0.5, 1.0, 0.01, 2, "Lower values make eye movement smaller."),
     ("eye_squint_gaze_compensation", "Squint compensation", 0.0, 1.0, 0.01, 2,
      "Raise it when squinting makes the eyes look up."),
-    ("eye_gaze_sync_rate", "Eye sync", 0.0, 100.0, 1.0, 0,
-     "0 = no extra syncing, 100 = both eyes move together. Silly mode takes priority."),
+    ("eye_gaze_sync_rate", "Eye sync", 0.0, 100.0, 1.0, 0, None),
 )
-# EyeOsc QML: switch slot, title, description
-EYE_SWITCHES = ((7, "Flip vertical gaze", "Inverts the up/down eye output."),
-                (9, "Sync eyelids", "Keeps both eyelid outputs together."),
-                (12, "Silly mode", "The eyes move in opposite directions."))
+# EyeOsc QML: switch slot, title
+EYE_SWITCHES = ((7, "Flip vertical gaze"), (9, "Sync eyelids"))
 # Amplitude page: slider i drives slot i (labels as Cymple's page has them), eye sliders first
 AMP_LABELS = ("Nose sneer", "Cheek raise", "Cheek puff", "Cheek suck", "Jaw left/right", "Jaw forward",
               "Jaw open", "Mouth close", "Mouth left/right", "Lip suck", "Lip funnel", "Lip pucker",
@@ -56,12 +59,144 @@ AMP_ORDER = (23, 24, 25, 26, 27) + tuple(range(23))
 INACTIVE_FIELDS = ("Eye_Pupil_Left", "Eye_Pupil_Right", "TongueCurlUp", "TongueBendDown", "TongueWide")
 TARGET_RE = re.compile(r"^[\w.\-]+:\d{1,5}$")
 FAST_MS, SLOW_EVERY, SAVE_DELAY_MS = 33, 8, 600
+NARROW_WIDTH = 1280                              # below this the previews move into a tab before Output
+NO_MAX_WIDTH = 16777215                          # Qt's "no maximum" (QWIDGETSIZE_MAX is not exported to Python)
+# Sidebar buttons by label. Upper deck: the pages in tab order (Previews when narrow); lower deck: Logs, Settings
+NAV_ICONS = {"Values": "activity", "Eyes": "eye", "Mouth": "smile", "Amplitudes": "sliders-horizontal",
+             "Previews": "scan-eye", "Output": "send", "Logs": "scroll-text", "Settings": "settings"}
 
 
-def _section(title):
-    label = QLabel(title)
-    label.setStyleSheet("font-weight: bold; font-size: 115%; margin-top: 8px")
+def _card(title):
+    """A titled card (group box) and its layout. The stylesheet pads the card, so the layout adds no margin of
+    its own: every card's title and content share one left edge."""
+    card = QGroupBox(title)
+    box = QVBoxLayout(card)
+    box.setContentsMargins(0, 0, 0, 0)
+    box.setSpacing(8)
+    return card, box
+
+
+def _repolish(widget):
+    """Apply a changed dynamic property (such as invalid) to the stylesheet."""
+    widget.style().unpolish(widget)
+    widget.style().polish(widget)
+
+
+class ToggleRow(QCheckBox):
+    """A switch: a pill track with a knob, then the label. Painted here, as the stylesheet cannot draw a knob.
+    It has no surface and no padding, so it lines up with the other content of its card. Only a Tab (not a
+    click) focuses it, so the focus ring is a keyboard cue."""
+    ROW_H, TRACK_W, TRACK_H, KNOB, GAP = 32, 40, 22, 16, 10
+    TRACK_OFF, ACCENT, KNOB_OFF, KNOB_ON = (QColor(c) for c in ("#4b647e", "#4cc2ff", "#f2f6fb", "#04121f"))
+
+    def __init__(self, text):
+        super().__init__(text)
+        self.setObjectName("toggle")             # the stylesheet gives it the label's font
+        self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+
+    def sizeHint(self):
+        return QSize(self.TRACK_W + self.GAP + self.fontMetrics().horizontalAdvance(self.text()), self.ROW_H)
+
+    def minimumSizeHint(self):
+        return self.sizeHint()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        on, enabled = self.isChecked(), self.isEnabled()
+        track = QRectF(0, (self.height() - self.TRACK_H) / 2, self.TRACK_W, self.TRACK_H)
+        p.setOpacity(1.0 if enabled else 0.4)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(self.ACCENT if on else self.TRACK_OFF)
+        p.drawRoundedRect(track, self.TRACK_H / 2, self.TRACK_H / 2)
+        inset = (self.TRACK_H - self.KNOB) / 2
+        knob_x = track.right() - inset - self.KNOB if on else track.left() + inset
+        p.setBrush(self.KNOB_ON if on else self.KNOB_OFF)
+        p.drawEllipse(QRectF(knob_x, track.top() + inset, self.KNOB, self.KNOB))
+        p.setOpacity(1.0)
+        if self.hasFocus():
+            p.setPen(QPen(self.ACCENT, 2))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            ring = track.adjusted(-2, -2, 2, 2)
+            p.drawRoundedRect(ring, ring.height() / 2, ring.height() / 2)
+        p.setPen(self.palette().color(QPalette.ColorGroup.Normal if enabled else QPalette.ColorGroup.Disabled,
+                                      QPalette.ColorRole.WindowText))
+        p.setFont(self.font())
+        p.drawText(QRectF(track.right() + self.GAP, 0, self.width() - track.right() - self.GAP, self.height()),
+                   Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, self.text())
+        p.end()
+
+
+class NavButton(QToolButton):
+    """A sidebar button: the icon over the label, the two centred as one group (Qt's own tool button puts the
+    label at the bottom edge and the icon in what is left, so the content sits off-centre)."""
+    HEIGHT, ICON, GAP = 82, 24, 6
+    IDLE, HOVER, CHECKED_BG = QColor(76, 194, 255, 10), QColor(76, 194, 255, 18), QColor(76, 194, 255, 41)   # tints of the accent
+    MUTED, ACCENT = QColor("#8ba3bd"), QColor("#4cc2ff")
+
+    def __init__(self, text):
+        super().__init__()
+        self.setObjectName("nav")                # the stylesheet gives it the label's weight
+        self.setText(text)
+        self.setCheckable(True)
+        self.setFixedHeight(self.HEIGHT)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    def enterEvent(self, event):
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.update()
+        super().leaveEvent(event)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        on = self.isChecked()
+        row = QRectF(self.rect())
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(self.CHECKED_BG if on else self.HOVER if self.underMouse() else self.IDLE)
+        p.drawRoundedRect(row, 8, 8)
+        if self.hasFocus():
+            p.setPen(QPen(self.ACCENT, 2))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawRoundedRect(row.adjusted(1, 1, -1, -1), 7, 7)
+        text_h = self.fontMetrics().height()
+        top = (self.height() - self.ICON - self.GAP - text_h) / 2
+        self.icon().paint(p, QRect(int((self.width() - self.ICON) / 2), int(top), self.ICON, self.ICON),
+                          Qt.AlignmentFlag.AlignCenter, QIcon.Mode.Normal,
+                          QIcon.State.On if on else QIcon.State.Off)
+        p.setPen(self.ACCENT if on else self.MUTED)
+        p.setFont(self.font())
+        p.drawText(QRectF(0, top + self.ICON + self.GAP, self.width(), text_h), Qt.AlignmentFlag.AlignCenter, self.text())
+        p.end()
+
+
+def _badge(text, kind):
+    """A pill label: kind "success" (version) or "accent" (status)."""
+    label = QLabel(text)
+    label.setObjectName("badge")
+    label.setProperty("kind", kind)
     return label
+
+
+class TitleBar(QWidget):
+    """The title bar of the frameless window: dragging it moves the window, a double click maximises."""
+
+    def __init__(self, win):
+        super().__init__()
+        self.win = win
+        self.setObjectName("titlebar")
+        self.setFixedHeight(40)
+
+    def mousePressEvent(self, event):
+        handle = self.win.windowHandle()
+        if event.button() == Qt.MouseButton.LeftButton and handle is not None:
+            handle.startSystemMove()
+
+    def mouseDoubleClickEvent(self, event):
+        self.win.toggle_maximized()
 
 
 def _note(text):
@@ -73,22 +208,30 @@ def _note(text):
 def _scroll(widget):
     area = QScrollArea()
     area.setWidgetResizable(True)
+    widget.layout().setContentsMargins(16, 16, 16, 16)
+    widget.layout().setSpacing(12)               # the gap between a page's cards
     area.setWidget(widget)
     return area
 
 
 class StreamPanel(QGroupBox):
-    def __init__(self, title, editable=False):
+    """One stream: the camera frame (`raw`) and the model's input crop (`crop`); `camera` / `model` hide one
+    of them. A hidden view still receives its images."""
+
+    def __init__(self, title, editable=False, camera=True, model=True):
         super().__init__(title)
         self.raw, self.crop = ImageView("camera"), ImageView("model input")
         self.raw.editable = editable
-        self.stats = QLabel("waiting for frames")
+        self.raw.setVisible(camera)
+        self.crop.setVisible(model)
+        self.stats = dim(QLabel("waiting for frames"))
         self.stats.setWordWrap(True)
         self.last_raw = self.last_obs = None
         row = QHBoxLayout()
         row.addWidget(self.raw, 3)
         row.addWidget(self.crop, 2)
         box = QVBoxLayout(self)
+        box.setContentsMargins(0, 0, 0, 0)
         box.addLayout(row, 1)
         box.addWidget(self.stats)
 
@@ -102,26 +245,58 @@ class MainWindow(QMainWindow):
         self.rt, self.args, self.opts, self.shell = rt, args, options, shell
         self.headset = shell.headset if shell is not None else HeadsetLauncher(rt)
         self.setWindowTitle("OpenCymple")
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.ticks = 0
         self.sent_prev = (time.monotonic(), 0)
         self.amp_view = None                     # (avatar id, own set) the amplitude page shows
         self.save_timer = QTimer(self, singleShot=True, interval=SAVE_DELAY_MS)
         self.save_timer.timeout.connect(self._save)
 
-        split = QSplitter(Qt.Orientation.Horizontal)
-        split.addWidget(self._build_previews())
         self.tabs = QTabWidget()
+        self.tabs.tabBar().hide()                # the sidebar switches the pages
+        self.tabs.setFocusPolicy(Qt.FocusPolicy.NoFocus)   # a Tab stop on the hidden bar would bounce focus back
+        self.nav_buttons = {}                    # page widget -> its sidebar button
+        self.previews_narrow = None
+        self.previews_area = QScrollArea()
+        self.previews_area.setWidgetResizable(True)
+        self.previews_area.setWidget(self._build_previews())
         self.tabs.addTab(self._build_values_tab(), "Values")
         self.tabs.addTab(_scroll(self._build_eye_tab()), "Eyes")
         self.tabs.addTab(_scroll(self._build_mouth_tab()), "Mouth")
         self.tabs.addTab(_scroll(self._build_amp_tab()), "Amplitudes")
-        self.tabs.addTab(_scroll(self._build_output_tab()), "Output")
-        split.addWidget(self.tabs)
-        split.setStretchFactor(0, 3)
-        split.setStretchFactor(1, 2)
-        self.setCentralWidget(split)
-        self.status = QLabel()
-        self.statusBar().addWidget(self.status, 1)
+        self.output_page = _scroll(self._build_output_tab())
+        self.tabs.addTab(self.output_page, "Output")
+        self.logs_page = self._build_logs_tab()
+        self.tabs.addTab(self.logs_page, "Logs")
+        self.settings_page = _scroll(self._build_settings_tab())
+        self.tabs.addTab(self.settings_page, "Settings")
+        self.tabs.currentChanged.connect(self._sync_nav)
+        page = QWidget()
+        page.setObjectName("panel")
+        page_box = QVBoxLayout(page)
+        page_box.setContentsMargins(0, 0, 0, 0)
+        page_box.addWidget(self.tabs)
+        split = QSplitter(Qt.Orientation.Horizontal)
+        self.split = split
+        split.setHandleWidth(8)
+        split.addWidget(page)
+        split.addWidget(self.previews_area)
+        split.setStretchFactor(0, 1)             # the pages take what the window adds; the previews keep their width
+        split.setStretchFactor(1, 0)
+        body = QHBoxLayout()
+        body.setSpacing(8)
+        body.addWidget(self._build_sidebar())
+        body.addWidget(split, 1)
+        shell = QWidget()
+        shell.setObjectName("shell")
+        column = QVBoxLayout(shell)
+        column.setContentsMargins(8, 8, 8, 8)
+        column.setSpacing(8)
+        column.addWidget(self._build_titlebar())
+        column.addLayout(body, 1)
+        self.setCentralWidget(shell)
+        self.grip = QSizeGrip(shell)             # the frameless window is resized from its corner
 
         geometry = self.opts.get("window", {}).get("geometry")
         if geometry:
@@ -133,24 +308,148 @@ class MainWindow(QMainWindow):
         self.timer = QTimer(self, interval=FAST_MS)
         self.timer.timeout.connect(self._refresh)
         self.timer.start()
+        self._sync_nav()
+        self._place_previews(self.width() < NARROW_WIDTH)
+        for button in self.findChildren(QAbstractButton):
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+        for b in self.winctl_buttons:
+            b.setVisible(self.window_buttons.isChecked())
 
     # ---- layout --------------------------------------------------------------------------
+    def _build_sidebar(self):
+        """The nav buttons keep their size: when the window is too low for all of them the sidebar scrolls."""
+        inner = QWidget()
+        box = QVBoxLayout(inner)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(8)
+        for i in range(4):                                         # upper deck: Values .. Amplitudes
+            box.addWidget(self._nav_button(self.tabs.widget(i), self.tabs.tabText(i)))
+        self.previews_nav = self._nav_button(self.previews_area, "Previews")   # shown when narrow
+        self.previews_nav.hide()
+        box.addWidget(self.previews_nav)
+        box.addWidget(self._nav_button(self.output_page, "Output"))
+        box.addStretch(1)
+        box.addWidget(self._nav_button(self.logs_page, "Logs"))      # lower deck: Logs, Settings
+        box.addWidget(self._nav_button(self.settings_page, "Settings"))
+        w = QScrollArea()
+        w.setObjectName("sidebar")
+        w.setWidgetResizable(True)
+        w.setWidget(inner)
+        w.setFixedWidth(108)
+        w.setFrameShape(QFrame.Shape.NoFrame)
+        w.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        w.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)     # the wheel scrolls it
+        return w
+
+    def _nav_button(self, page, text):
+        muted = self.palette().color(QPalette.ColorRole.PlaceholderText)
+        b = NavButton(text)
+        b.setIcon(icon(NAV_ICONS[text], muted, checked=self.palette().color(QPalette.ColorRole.Highlight)))
+        b.clicked.connect(lambda _=False, w=page: self._show_page(w))
+        self.nav_buttons[page] = b
+        return b
+
+    def _show_page(self, page):
+        self.tabs.setCurrentWidget(page)
+        self._sync_nav()
+
+    def _sync_nav(self, _index=None):
+        """Only the current page's button is checked. The buttons are not an exclusive group: Qt then lets Tab
+        stop at the checked button, so the rest of the sidebar could not be reached from the keyboard."""
+        current = self.nav_buttons.get(self.tabs.currentWidget())
+        for button in self.nav_buttons.values():
+            button.setChecked(button is current)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.grip.move(self.centralWidget().width() - self.grip.width(), self.centralWidget().height() - self.grip.height())
+        self.grip.raise_()
+        self._place_previews(self.width() < NARROW_WIDTH)
+
+    def _place_previews(self, narrow):
+        """Narrow window: the previews become a tab before Output, as wide as the window and never narrower than
+        their content. Wide: beside the pages at the fixed width their camera cells want, so a wider window gives
+        the extra width to the pages. Neither scrolls sideways."""
+        if narrow == self.previews_narrow:
+            return
+        self.previews_narrow = narrow
+        content = self.previews_area.widget()
+        scrollbar = self.previews_area.verticalScrollBar().sizeHint().width()
+        if narrow:
+            self.previews_area.setMaximumWidth(NO_MAX_WIDTH)
+            self.previews_area.setMinimumWidth(content.minimumSizeHint().width() + scrollbar)
+            self.tabs.insertTab(self.tabs.indexOf(self.output_page), self.previews_area, "Previews")
+        else:
+            if self.tabs.indexOf(self.previews_area) >= 0:
+                self.tabs.removeTab(self.tabs.indexOf(self.previews_area))
+                self.split.addWidget(self.previews_area)
+                self.previews_area.show()
+            self.previews_area.setFixedWidth(content.sizeHint().width() + scrollbar)
+        self.previews_nav.setVisible(narrow)
+
+    def _build_titlebar(self):
+        bar = TitleBar(self)
+        row = QHBoxLayout(bar)
+        row.setContentsMargins(12, 0, 8, 0)
+        row.setSpacing(8)
+        logo = QLabel()
+        logo.setPixmap(QIcon(icon_path()).pixmap(22, 22))
+        row.addWidget(logo)
+        name = QLabel("OpenCymple")
+        name.setObjectName("appName")
+        row.addWidget(name)
+        row.addWidget(_badge("v%s" % __version__, "success"))
+        self.source_badge = _badge("", "accent")
+        row.addWidget(self.source_badge)
+        row.addStretch(1)
+        muted = self.palette().color(QPalette.ColorRole.PlaceholderText)
+        self.winctl_buttons = []
+        for name, label, slot in (("minus", "Minimize", self.showMinimized), ("maximize", "Maximize", self.toggle_maximized),
+                                  ("x", "Close", self.close)):
+            b = QToolButton()
+            b.setObjectName("winctl")
+            b.setIcon(icon(name, muted))
+            b.setIconSize(QSize(16, 16))
+            b.setToolTip(label)                  # icon only: the tooltip is also the accessible name
+            b.setAccessibleName(label)
+            b.clicked.connect(lambda _=False, f=slot: f())
+            row.addWidget(b)
+            self.winctl_buttons.append(b)
+        return bar
+
+    def toggle_maximized(self):
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+
     def _build_previews(self):
         w = QWidget()
-        grid = QGridLayout(w)
+        w.setObjectName("panel")
+        outer = QVBoxLayout(w)
+        outer.setContentsMargins(16, 16, 16, 16)
+        title = QLabel("Previews")
+        title.setObjectName("panelTitle")
+        outer.addWidget(title)
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setSpacing(8)
+        outer.addLayout(grid, 1)
         self.eye_panels = {}
-        for stream, eye in P.EYE_STREAMS.items():
+        for stream, eye in P.EYE_STREAMS.items():                      # eyes: the model input only
             if stream in self.rt.pipeline.workers:
-                self.eye_panels[stream] = StreamPanel(("Left eye", "Right eye")[eye])
+                self.eye_panels[stream] = StreamPanel(("Left eye", "Right eye")[eye], camera=False)
                 grid.addWidget(self.eye_panels[stream], 0, eye)
         self.mouth_panel = None
-        if P.MOUTH_V1_STREAM in self.rt.pipeline.workers:
-            self.mouth_panel = StreamPanel("Mouth", editable=True)
+        if P.MOUTH_V1_STREAM in self.rt.pipeline.workers:             # mouth: the camera feed only
+            self.mouth_panel = StreamPanel("Mouth", editable=True, model=False)
             self.mouth_panel.raw.rectDrawn.connect(self._mouth_rect_drawn)
             grid.addWidget(self.mouth_panel, 1, 0)
         box = QGroupBox("Gaze and eyelids")
         self.gaze = GazeView()
-        QVBoxLayout(box).addWidget(self.gaze)
+        inner = QVBoxLayout(box)
+        inner.setContentsMargins(0, 0, 0, 0)
+        inner.addWidget(self.gaze)
         grid.addWidget(box, 1, 1)
         grid.setRowStretch(0, 1)
         grid.setRowStretch(1, 1)
@@ -160,9 +459,19 @@ class MainWindow(QMainWindow):
         self.bars = ValueBars(FIELDS, signed=FIELDS[:4], inactive=INACTIVE_FIELDS)
         w = QWidget()
         box = QVBoxLayout(w)
-        box.addWidget(_note("The 70 values Cymple sends (eyes blue, mouth green), after smoothing and amplitudes. "
-                            "Grey ones are never filled by Cymple either."))
-        box.addWidget(self.bars)
+        card, inner = _card("Values")
+        self.afk_toggle = ToggleRow("AFK Detection")
+        self.afk_toggle.setChecked(self.opts["afk"]["enabled"])
+        self.rt.pipeline.afk.enabled = self.afk_toggle.isChecked()
+        self.afk_toggle.toggled.connect(self._afk_toggled)
+        inner.addWidget(self.afk_toggle)
+        inner.addWidget(_note("While the headset is off, send every value at its default instead of what the "
+                              "models make of the empty cameras."))
+        self.afk_status = QLabel("Headset off: sending default values")
+        self.afk_status.hide()                   # shown while the headset is off
+        inner.addWidget(self.afk_status)
+        inner.addWidget(self.bars)
+        box.addWidget(card)
         box.addStretch(1)
         return _scroll(w)
 
@@ -170,110 +479,101 @@ class MainWindow(QMainWindow):
         cal = self.rt.calib
         w = QWidget()
         box = QVBoxLayout(w)
-        box.addWidget(_section("Eye settings"))
+        card, inner = _card("Eye settings")
         self.eye_sliders = {}
         for attr, title, lo, hi, step, dec, desc in EYE_SLIDERS:
-            s = SliderRow(title, lo, hi, step, dec, desc)
+            s = SliderRow(title, lo, hi, step, dec, desc, default=getattr(C.Calibration(), attr))
             s.set_value(getattr(cal, attr))
             s.valueChanged.connect(lambda v, a=attr: self._changed(self.rt.set_eye_setting, a, v))
             self.eye_sliders[attr] = s
-            box.addWidget(s)
-        box.addWidget(_section("Eye switches"))
-        for slot, title, desc in EYE_SWITCHES:
-            cb = QCheckBox(title)
+            inner.addWidget(s)
+        box.addWidget(card)
+        card, inner = _card("Eye switches")
+        for slot, title in EYE_SWITCHES:
+            cb = ToggleRow(title)
             cb.setChecked(bool(cal.switches.get(slot)))
             cb.toggled.connect(lambda on, s=slot: self._changed(self.rt.set_switch, s, on))
-            box.addWidget(cb)
-            box.addWidget(_note(desc))
-        box.addWidget(_section("Eye crop (ROI)"))
-        box.addWidget(_note("Look straight ahead, then calibrate. Cymple's ROI model finds each eye in the camera "
-                            "image; the crop is stored and used from then on."))
+            inner.addWidget(cb)
+        box.addWidget(card)
+        card, inner = _card("Eye crop (ROI)")
         row = QHBoxLayout()
         for label, eyes in (("Calibrate both", (0, 1)), ("Left only", (0,)), ("Right only", (1,))):
             b = QPushButton(label)
+            b.setProperty("primary", eyes == (0, 1))
             b.clicked.connect(lambda _=False, e=eyes: self._calibrate_roi(e))
             row.addWidget(b)
         row.addStretch(1)
-        box.addLayout(row)
+        inner.addLayout(row)
         self.roi_status = QLabel()
-        box.addWidget(self.roi_status)
-        box.addWidget(_section("Gaze calibration"))
-        box.addWidget(_note("Recenter: look straight ahead with relaxed eyes. It updates the eye centre, the "
-                            "eyelid, squint and widen references and the expression neutral; in precise mode it "
-                            "also moves the 13-point calibration to the new centre."))
-        row = QHBoxLayout()
-        self.precise_radio = QRadioButton("Precise (13 points)")
-        self.coarse_radio = QRadioButton("Coarse (5 s look-around)")
-        (self.precise_radio if cal.precise_gaze else self.coarse_radio).setChecked(True)
-        self.precise_radio.toggled.connect(lambda on: self._changed(lambda _k, v: self.rt.set_precise(v), None, on))
-        row.addWidget(self.precise_radio)
-        row.addWidget(self.coarse_radio)
-        row.addStretch(1)
-        box.addLayout(row)
-        box.addWidget(_note("Precise shows 13 dots to look at, one capture each (Cymple's full-view calibration). "
-                            "In the headset: left stick sets the size, right stick the height, right trigger "
-                            "starts; then look at each yellow dot and pull the trigger. On the desktop: full "
-                            "screen, Space per dot. Coarse records how far the eyes move while you look around "
-                            "for 5 seconds."))
+        self.roi_status.hide()                   # shown once a calibration has run
+        inner.addWidget(self.roi_status)
+        box.addWidget(card)
+        card, inner = _card("Gaze calibration")
+        inner.addWidget(_note("Recenter: look straight ahead with relaxed eyes. It updates the eye centre, the "
+                              "eyelid, squint and widen references and the expression neutral; in precise mode it "
+                              "also moves the 13-point calibration to the new centre."))
+        inner.addWidget(_note("Precise shows 13 dots to look at, one capture each (Cymple's full-view calibration). "
+                              "In the headset: left stick sets the size, right stick the height, right trigger "
+                              "starts; then look at each yellow dot and pull the trigger."))
         row = QHBoxLayout()
         recenter = QPushButton("Recenter both eyes")
         recenter.clicked.connect(lambda: self.rt.recenter(wait=False))
         self.headset_button = QPushButton("Calibrate in headset")
+        self.headset_button.setProperty("primary", True)
         self.headset_button.clicked.connect(self._headset_button)
-        self.calib_button = QPushButton("Start calibration")
-        self.calib_button.clicked.connect(self._calibration_button)
         row.addWidget(recenter)
         row.addWidget(self.headset_button)
-        row.addWidget(self.calib_button)
         row.addStretch(1)
-        box.addLayout(row)
+        inner.addLayout(row)
         self.calib_status = QLabel()
         self.calib_status.setWordWrap(True)
-        box.addWidget(self.calib_status)
-        self.mesh_status = _note("")
-        box.addWidget(self.mesh_status)
-        self.mesh_window = None
+        inner.addWidget(self.calib_status)
+        box.addWidget(card)
         box.addStretch(1)
-        self._update_eye_status()
         return w
 
     def _build_mouth_tab(self):
         m = self.rt.calib.mouth
         w = QWidget()
         box = QVBoxLayout(w)
-        box.addWidget(_section("Mouth settings"))
+        card, inner = _card("Mouth settings")
         self.mouth_sliders = {}
         for attr, title, lo, hi, step, dec, desc, suffix in (
-                ("filter", "Smoothing", 0.0, 0.5, 0.01, 2, "Higher values make mouth tracking smoother.", ""),
-                ("rotation", "Camera rotation", -180.0, 180.0, 5.0, 0,
-                 "Turns the camera image to match how the camera is mounted.", "°")):
-            s = SliderRow(title, lo, hi, step, dec, desc, suffix)
+                ("filter", "Smoothing", 0.0, 0.5, 0.01, 2, None, ""),
+                ("rotation", "Camera rotation", -180.0, 180.0, 5.0, 0, None, "°")):
+            s = SliderRow(title, lo, hi, step, dec, desc, suffix, default=getattr(C.MouthCalibration(), attr))
             s.set_value(getattr(m, attr))
             s.valueChanged.connect(lambda v, a=attr: self._changed(self.rt.set_mouth_setting, a, v))
             self.mouth_sliders[attr] = s
-            box.addWidget(s)
-        box.addWidget(_section("Mouth area"))
-        self.auto_roi = QCheckBox("Find the mouth automatically")
+            inner.addWidget(s)
+        box.addWidget(card)
+        card, inner = _card("Mouth area")
+        self.auto_roi = ToggleRow("Find the mouth automatically")
         self.auto_roi.setChecked(m.auto_roi)
         self.auto_roi.toggled.connect(self._auto_roi_toggled)
-        box.addWidget(self.auto_roi)
-        box.addWidget(_note("Cymple's mouth ROI model looks for the mouth once a second. Turn it off to set the "
-                            "area by hand: drag a rectangle on the mouth camera image, or use the sliders."))
+        inner.addWidget(self.auto_roi)
         self.area_sliders = {}
+        self.area_box = QWidget()
+        area = QVBoxLayout(self.area_box)
+        area.setContentsMargins(0, 0, 0, 0)
+        area.setSpacing(8)
         for attr, title, lo, hi in (("upper", "Top", 0.0, 98.0), ("bottom", "Bottom", 1.0, 99.0),
                                     ("width", "Width", 1.0, 100.0), ("x_offset", "Horizontal centre", 0.0, 100.0)):
-            s = SliderRow(title, lo, hi, 0.5, 1, suffix=" %", compact=True)
+            s = SliderRow(title, lo, hi, 0.5, 1, suffix=" %", default=getattr(C.MouthCalibration(), attr) * 100.0)
             s.valueChanged.connect(lambda v, a=attr: self._area_changed(a, v))
             self.area_sliders[attr] = s
-            box.addWidget(s)
+            area.addWidget(s)
+        inner.addWidget(self.area_box)
         self._sync_area_sliders()
+        box.addWidget(card)
         box.addStretch(1)
         return w
 
     def _build_amp_tab(self):
         w = QWidget()
         box = QVBoxLayout(w)
-        box.addWidget(_note("Higher values make the expression stronger (0 to 5)."))
+        card, inner = _card("Amplitudes")
+        inner.addWidget(_note("Higher values make the expression stronger (0 to 5)."))
         row = QHBoxLayout()
         self.amp_scope = QLabel()
         self.amp_scope.setWordWrap(True)
@@ -281,15 +581,16 @@ class MainWindow(QMainWindow):
         self.amp_button = QPushButton()
         self.amp_button.clicked.connect(self._amp_button)
         row.addWidget(self.amp_button)
-        box.addLayout(row)
+        inner.addLayout(row)
         grid = QGridLayout()
         self.amp_sliders = {}
         for k, slot in enumerate(AMP_ORDER):
-            s = SliderRow(AMP_LABELS[slot], 0.0, 5.0, 0.05, 2, compact=True)
+            s = SliderRow(AMP_LABELS[slot], 0.0, 5.0, 0.05, 2, default=1.0)
             s.valueChanged.connect(lambda v, i=slot: self._changed(self.rt.set_amp, i, v))
             self.amp_sliders[slot] = s
             grid.addWidget(s, k // 2, k % 2)
-        box.addLayout(grid)
+        inner.addLayout(grid)
+        box.addWidget(card)
         box.addStretch(1)
         self._update_amp_view(force=True)
         return w
@@ -300,7 +601,11 @@ class MainWindow(QMainWindow):
         box = QVBoxLayout(w)
         g = QGroupBox("VRChat (OSC)")
         form = QFormLayout(g)
-        self.osc_enabled = QCheckBox("Send avatar parameters to VRChat")
+        form.setContentsMargins(0, 0, 0, 0)
+        form.setHorizontalSpacing(16)
+        form.setVerticalSpacing(8)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.osc_enabled = ToggleRow("Send avatar parameters to VRChat")
         self.osc_enabled.setChecked(bool(o["enabled"]) and not self.args.no_osc)
         self.osc_enabled.toggled.connect(self._osc_option_changed)
         form.addRow(self.osc_enabled)
@@ -318,24 +623,51 @@ class MainWindow(QMainWindow):
         form.addRow("Status", self.osc_status)
         box.addWidget(g)
 
-        g = QGroupBox("Cameras")
-        v = QVBoxLayout(g)
+        g, v = _card("Cameras")
         self.source_label = QLabel()
         self.source_label.setWordWrap(True)
         self.source_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         v.addWidget(self.source_label)
         box.addWidget(g)
+        box.addStretch(1)
+        return w
 
-        g = QGroupBox("Settings")
-        v = QVBoxLayout(g)
+    def _build_logs_tab(self):
+        w = QWidget()
+        box = QVBoxLayout(w)
+        box.setContentsMargins(16, 16, 16, 16)
+        row = QHBoxLayout()
+        row.addWidget(_note("Log lines since OpenCymple started, newest last."), 1)
+        b = QPushButton("Export Logs")
+        b.setIcon(icon("file-up", self.palette().color(QPalette.ColorRole.ButtonText)))
+        b.clicked.connect(self._export_logs)
+        row.addWidget(b)
+        box.addLayout(row)
+        self.log_view = LogView(logs.BUFFER)
+        box.addWidget(self.log_view, 1)
+        return w
+
+    def _build_settings_tab(self):
+        w = QWidget()
+        box = QVBoxLayout(w)
+        g, v = _card("Window")
+        self.window_buttons = ToggleRow("Show minimize, maximize and close buttons")
+        self.window_buttons.setChecked(self.opts.get("window", {}).get("buttons", True))
+        self.window_buttons.toggled.connect(self._window_buttons_toggled)
+        v.addWidget(self.window_buttons)
+        box.addWidget(g)
+        g, v = _card("OpenCymple config")
         readonly = self.rt.writer.readonly
-        v.addWidget(_note("Changes are saved to %s%s" % (
-            self.rt.ini, " (no: this is Cymple's own INI, which only Export changes)" if readonly else
-            ". Windows Cymple keeps its own settings until you export.")))
-        b = QPushButton("Export to Windows Cymple…")
+        text = self.palette().color(QPalette.ColorRole.ButtonText)
+        row = QHBoxLayout()
+        b = QPushButton("Import From")
+        b.setIcon(icon("file-down", text))
+        b.clicked.connect(self._import)
+        row.addWidget(b)
+        b = QPushButton("Export To")
+        b.setIcon(icon("file-up", text))
         b.setEnabled(not readonly)
         b.clicked.connect(self._export)
-        row = QHBoxLayout()
         row.addWidget(b)
         row.addStretch(1)
         v.addLayout(row)
@@ -344,6 +676,18 @@ class MainWindow(QMainWindow):
         return w
 
     # ---- changes -------------------------------------------------------------------------
+    def _afk_toggled(self, on):
+        self.rt.pipeline.afk.enabled = on
+        self.opts["afk"]["enabled"] = on
+        S.save_options(self.opts)
+
+    def _window_buttons_toggled(self, on):
+        """Tiling window managers have no use for the title bar's buttons."""
+        self.opts.setdefault("window", {})["buttons"] = on
+        S.save_options(self.opts)
+        for b in self.winctl_buttons:
+            b.setVisible(on)
+
     def _changed(self, setter, key, value):
         setter(key, value)
         self.save_timer.start()
@@ -372,20 +716,6 @@ class MainWindow(QMainWindow):
             msg.append("no valid crop for %s (no frames, or the model found no eye)" % ", ".join(bad))
         self._update_eye_status("; ".join(msg))
 
-    def _calibration_button(self):
-        if self.rt.calibrator.coarse is not None:
-            self.rt.stop_coarse()
-        elif self.rt.calib.precise_gaze:
-            if self.mesh_window is None:
-                from .calibration import MeshTargetWindow
-                self.mesh_window = MeshTargetWindow(self.rt)
-                self.mesh_window.finished.connect(self._mesh_window_closed)
-                self.mesh_window.show()
-                self.mesh_window.raise_()
-                self.mesh_window.activateWindow()
-        else:
-            self.rt.start_coarse()
-
     def _headset_button(self):
         if self.headset.running:
             self.headset.stop()
@@ -394,32 +724,19 @@ class MainWindow(QMainWindow):
         if why:
             self.rt.calib_status = why
 
-    def _mesh_window_closed(self):
-        self.mesh_window = None
-        self._update_eye_status()
-
-    def _update_eye_status(self, last=None):
-        if last is not None:
-            self.roi_last = last
-        last = getattr(self, "roi_last", None)
-        cal = self.rt.calib
-        roi = ", ".join("%s %s" % (n, "stored" if e.roi_quad is not None else "none (whole frame)")
-                        for n, e in zip(("left", "right"), cal.eyes))
-        self.roi_status.setText("ROI: %s%s" % (roi, "\nLast calibration: %s" % last if last else ""))
-        mesh = ", ".join("%s %s" % (n, "valid" if e.mesh_valid else "missing") for n, e in zip(("left", "right"), cal.eyes))
-        self.mesh_status.setText("13-point gaze mesh: %s. Coarse ranges (yaw): %s." % (mesh, ", ".join(
-            "%s %+.3f / %+.3f / %+.3f" % ((n,) + tuple(e.range_yaw)) for n, e in zip(("left", "right"), cal.eyes))))
+    def _update_eye_status(self, last):
+        self.roi_status.setText("Last calibration: %s" % last)
+        self.roi_status.show()
 
     def _auto_roi_toggled(self, on):
         self._changed(self.rt.set_mouth_setting, "auto_roi", on)
-        for s in self.area_sliders.values():
-            s.setEnabled(not on)
+        self.area_box.setVisible(not on)
 
     def _sync_area_sliders(self):
         m = self.rt.calib.mouth
         for attr, s in self.area_sliders.items():
             s.set_value(getattr(m, attr) * 100.0)
-            s.setEnabled(not m.auto_roi)
+        self.area_box.setVisible(not m.auto_roi)
 
     def _set_area(self, upper, bottom, width, x_offset):
         for attr, v in (("upper", upper), ("bottom", bottom), ("width", width), ("x_offset", x_offset)):
@@ -484,10 +801,11 @@ class MainWindow(QMainWindow):
 
     def _osc_option_changed(self, *_):
         target = self.osc_target.text().strip()
-        if not TARGET_RE.match(target):
-            self.osc_target.setStyleSheet("color: #e04040")
+        invalid = not TARGET_RE.match(target)
+        self.osc_target.setProperty("invalid", invalid)
+        _repolish(self.osc_target)
+        if invalid:
             return
-        self.osc_target.setStyleSheet("")
         o = self.opts["osc"]
         new = {"enabled": self.osc_enabled.isChecked(), "target": target, "avatar": self.osc_avatar.currentData()}
         if new == o and (self.rt.vrchat is not None) == new["enabled"]:
@@ -505,6 +823,19 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "VRChat output", "Cannot start the OSC output: %s" % e)
         else:
             self.rt.stop_osc()
+
+    def _import(self):
+        source = C.find_ini()
+        if not source:
+            QMessageBox.information(self, "Import From", "No Windows Cymple installation found.")
+            return
+        question = ("Replace OpenCymple's settings and amplitude sets with Windows Cymple's?\n"
+                    "Ours are kept as backups. Restart OpenCymple to use them.")
+        if QMessageBox.question(self, "Import From", question) != QMessageBox.StandardButton.Yes:
+            return
+        self.rt.flush()                          # pending changes go into our copy first, so the backup has them
+        S.import_from_cymple(source, force=True)
+        QMessageBox.information(self, "Import From", "Done. Restart OpenCymple to use the imported settings.")
 
     def _export(self):
         from ..oracle import cymple_pids
@@ -529,6 +860,17 @@ class MainWindow(QMainWindow):
             return
         _, _, backup = S.export_to_cymple(self.rt.ini, target)
         QMessageBox.information(self, "Export", "Done.%s" % (" Backup: %s" % backup if backup else ""))
+
+    def _export_logs(self):
+        name = "opencymple-%s.log" % time.strftime("%Y%m%d-%H%M%S")
+        path, _ = QFileDialog.getSaveFileName(self, "Export Logs", name, "Log files (*.log *.txt);;All files (*)")
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(logs.BUFFER.text())
+        except OSError as e:
+            QMessageBox.warning(self, "Export Logs", "Cannot write %s: %s" % (path, e))
 
     # ---- refresh -------------------------------------------------------------------------
     def _refresh(self):
@@ -579,6 +921,7 @@ class MainWindow(QMainWindow):
             panel.crop.set_image(gray_qimage(obs.crop))
 
     def _refresh_slow(self, snap):
+        self.log_view.refresh()
         rx = self.rt.ingest.snapshot()
         panels = dict(self.eye_panels)
         if self.mouth_panel is not None:
@@ -613,7 +956,6 @@ class MainWindow(QMainWindow):
         v = self.rt.vrchat
         if v is None:
             self.osc_status.setText("off")
-            osc = "VRChat output off"
         else:
             st = v.status()
             now = time.monotonic()
@@ -622,34 +964,19 @@ class MainWindow(QMainWindow):
             self.sent_prev = (now, st["sent"])
             self.osc_status.setText("avatar %s (%s), %d parameters, %.0f messages/s" % (
                 st["avatar"] or "unknown: default addresses", st["source"], st["parameters"], rate))
-            osc = "VRChat: %s, %d parameters" % (st["avatar"] or "default addresses", st["parameters"])
         self._update_amp_view()
+        if self.rt.pipeline.afk.away == self.afk_status.isHidden():
+            self.afk_status.setVisible(self.rt.pipeline.afk.away)
         headset_on = self.headset.running
         status = self.rt.calib_status
         hs = self.headset.status()
         if hs:
             status = "%s%s" % (hs, ". " + status if status and headset_on else "")
         self.calib_status.setText(status)
-        if self.precise_radio.isChecked() != self.rt.calib.precise_gaze:     # changed from the tray / CLI
-            for b in (self.precise_radio, self.coarse_radio):
-                b.blockSignals(True)
-            (self.precise_radio if self.rt.calib.precise_gaze else self.coarse_radio).setChecked(True)
-            for b in (self.precise_radio, self.coarse_radio):
-                b.blockSignals(False)
-        left = self.rt.coarse_remaining()
-        if left is not None:
-            self.calib_button.setText("Stop coarse calibration (%.0f s)" % left)
-        else:
-            self.calib_button.setText("Calibration window open" if self.mesh_window is not None else
-                                      "Calibrate on desktop" if self.rt.calib.precise_gaze else
-                                      "Start coarse calibration (5 s)")
-        self.calib_button.setEnabled(self.mesh_window is None and not headset_on)
+        left = self.rt.coarse_remaining()        # a coarse run started from the tray or the CLI
         self.headset_button.setText("Stop headset calibration" if headset_on else "Calibrate in headset")
-        self.headset_button.setEnabled(headset_on or (self.mesh_window is None and left is None))
-        self._update_eye_status()
-        saved = "not saved (Cymple's INI)" if self.rt.writer.readonly else (
-            "saving…" if self.save_timer.isActive() else "saved")
-        self.status.setText("%s · %s · settings %s" % (self.rt.source_desc or "-", osc, saved))
+        self.headset_button.setEnabled(headset_on or left is None)
+        self.source_badge.setText(self.rt.source_desc or "-")
 
     # ---- shutdown ------------------------------------------------------------------------
     def closeEvent(self, event):
@@ -667,27 +994,38 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
 
+def _load_fonts():
+    """Poppins from resources/fonts (OFL-Poppins.txt, the licence, sits beside it and is not a font); without
+    the files Qt uses the system sans."""
+    folder = os.path.join(RESOURCES, "fonts")
+    if os.path.isdir(folder):
+        for name in sorted(os.listdir(folder)):
+            if name.lower().endswith((".ttf", ".otf")):
+                QFontDatabase.addApplicationFont(os.path.join(folder, name))
+
+
 def _apply_theme(app):
-    """Fusion; dark like Cymple unless the desktop asks for a light scheme."""
+    """Fusion with the dark SlimeVR-style theme (resources/style.qss), whatever the desktop's scheme."""
     app.setStyle("Fusion")
-    if QGuiApplication.styleHints().colorScheme() == Qt.ColorScheme.Light:
-        return
+    _load_fonts()
     p = QPalette()
-    roles = {QPalette.ColorRole.Window: "#202126", QPalette.ColorRole.WindowText: "#e6e6e6",
-             QPalette.ColorRole.Base: "#2e3037", QPalette.ColorRole.AlternateBase: "#353740",
-             QPalette.ColorRole.Text: "#e6e6e6", QPalette.ColorRole.Button: "#363840",
-             QPalette.ColorRole.Light: "#55585f", QPalette.ColorRole.Midlight: "#44474f",
-             QPalette.ColorRole.Mid: "#2a2c32", QPalette.ColorRole.Dark: "#141518",
-             QPalette.ColorRole.Shadow: "#0a0a0c",
-             QPalette.ColorRole.ButtonText: "#e6e6e6", QPalette.ColorRole.Highlight: "#3491fa",
-             QPalette.ColorRole.HighlightedText: "#ffffff", QPalette.ColorRole.ToolTipBase: "#2b2c33",
-             QPalette.ColorRole.ToolTipText: "#e6e6e6", QPalette.ColorRole.PlaceholderText: "#9aa0aa",
-             QPalette.ColorRole.Link: "#4aa3ff"}
+    roles = {QPalette.ColorRole.Window: "#060f1c", QPalette.ColorRole.WindowText: "#f2f6fb",
+             QPalette.ColorRole.Base: "#153453", QPalette.ColorRole.AlternateBase: "#0f2742",
+             QPalette.ColorRole.Text: "#f2f6fb", QPalette.ColorRole.Button: "#0f2742",
+             QPalette.ColorRole.Light: "#1b3a5c", QPalette.ColorRole.Midlight: "#153453",
+             QPalette.ColorRole.Mid: "#0a1d33", QPalette.ColorRole.Dark: "#04121f",
+             QPalette.ColorRole.Shadow: "#000a14",
+             QPalette.ColorRole.ButtonText: "#f2f6fb", QPalette.ColorRole.Highlight: "#4cc2ff",
+             QPalette.ColorRole.HighlightedText: "#04121f", QPalette.ColorRole.ToolTipBase: "#153453",
+             QPalette.ColorRole.ToolTipText: "#f2f6fb", QPalette.ColorRole.PlaceholderText: "#8ba3bd",
+             QPalette.ColorRole.Link: "#4cc2ff"}
     for role, color in roles.items():
         p.setColor(role, QColor(color))
     for role in (QPalette.ColorRole.WindowText, QPalette.ColorRole.Text, QPalette.ColorRole.ButtonText):
-        p.setColor(QPalette.ColorGroup.Disabled, role, QColor("#70747c"))
+        p.setColor(QPalette.ColorGroup.Disabled, role, QColor("#5a7691"))
     app.setPalette(p)
+    with open(os.path.join(RESOURCES, "style.qss"), encoding="utf-8") as f:
+        app.setStyleSheet(f.read())
 
 
 def _screenshots(win, path):

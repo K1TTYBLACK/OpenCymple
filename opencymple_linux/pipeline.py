@@ -13,6 +13,7 @@ from collections import deque
 import numpy as np
 
 from . import protocol as P
+from .afk import AfkDetector
 from .eye import EYE_NAMES, EyeTracker
 from .face import EyeCore, MouthCore
 from .imgproc import decode_gray
@@ -106,6 +107,7 @@ class Pipeline:
         self.unhandled_streams = set()
         self.face = EyeCore(calib)
         self.mouth_core = MouthCore(calib)
+        self.afk = AfkDetector()
         self.outputs = []                    # objects with update(fields, now), run on the packet timer
         self.ticker = None
         self.workers = {}
@@ -148,6 +150,7 @@ class Pipeline:
     def _publish_eye(self, obs):
         with self.lock:
             self.eyes[obs.eye] = obs
+            self.afk.on_eye(obs)
             self.face.on_landmarks(obs.eye, obs.landmarks, obs.expression, obs.t)
 
     def _publish_mouth(self, obs):
@@ -157,10 +160,15 @@ class Pipeline:
 
     def build_packet(self, now):
         """One run of the original's 10 ms packet timer (sub_1800c2820): {field: value} with the eye
-        fields when an eye was seen recently and the mouth fields once mouth data arrived, or None."""
+        fields when an eye was seen recently and the mouth fields once mouth data arrived, or None.
+        While AFK detection says the headset is off, every field at its default (0)."""
         with self.lock:
-            eye = self.face.build(now)
+            eye = self.face.build(now)               # the filters keep running, so values are fresh on return
             mouth = self.mouth_core.build(now)
+            if self.afk.update(now):
+                packet = dict.fromkeys(FIELDS, 0.0)
+                self.eye_fields, self.mouth_fields = dict.fromkeys(FIELDS[:20], 0.0), dict.fromkeys(FIELDS[20:], 0.0)
+                return packet
             if eye is None and mouth is None:
                 return None
             packet = {}
